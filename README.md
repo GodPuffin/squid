@@ -9,13 +9,13 @@ Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, 
 Windows:
 
 ```powershell
-irm https://raw.githubusercontent.com/GodPuffin/squid/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/GodPuffin/squid/master/scripts/install.ps1 | iex
 ```
 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/GodPuffin/squid/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/GodPuffin/squid/master/scripts/install.sh | sh
 ```
 
 The installer downloads the latest GitHub release and adds `squid` to a user-local bin directory.
