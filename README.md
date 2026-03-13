@@ -34,22 +34,3 @@ cd squid
 cargo build --release
 .\target\release\squid.exe path\to\database.sqlite
 ```
-
-## Controls
-
-- `q`: quit
-- `Tab` or Left / Right: switch pane
-- Up / Down: move selection
-- `v`: toggle rows / schema
-- `Enter`: open row details
-- `m`: open view/sort modal
-- `M`: open filters modal
-- `f`: search current table
-- `F`: search all tables
-- `r`: reload
-
-## Notes
-
-- Read-only by design
-- BLOB values are shown as byte counts
-- Some row-jump behavior depends on SQLite `rowid`
