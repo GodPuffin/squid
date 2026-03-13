@@ -1,4 +1,4 @@
-# squid
+# squid 🦑
 
 Read-only SQLite viewer for the terminal.
 
@@ -53,5 +53,3 @@ cargo build --release
 - Read-only by design
 - BLOB values are shown as byte counts
 - Some row-jump behavior depends on SQLite `rowid`
-
-That triggers the GitHub release workflow and uploads platform archives for the installer scripts.
