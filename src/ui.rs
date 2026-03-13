@@ -1,0 +1,25 @@
+mod chrome;
+mod content;
+mod layout;
+mod modals;
+mod search;
+mod tables;
+mod widgets;
+
+use ratatui::Frame;
+
+use crate::app::App;
+
+pub use layout::{
+    LayoutInfo, layout_info, list_row_at, search_result_row_at, table_row_at, viewport_sizes,
+};
+
+pub fn render(frame: &mut Frame, app: &App) {
+    let layout = layout_info(frame.area(), app);
+
+    chrome::render_header(frame, app, layout.header);
+    tables::render_tables(frame, app, layout.tables);
+    content::render(frame, app, &layout);
+    chrome::render_footer(frame, app, layout.footer);
+    modals::render(frame, app, &layout);
+}
