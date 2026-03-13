@@ -1,21 +1,32 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::{Action, App, FilterPane};
+use crate::app::{Action, App, AppMode, FilterPane, SqlPane};
 
-pub fn action_for_key(app: &App, key: KeyCode) -> Action {
+pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
+    if matches!(key.code, KeyCode::Char('1')) {
+        return Action::SwitchToBrowse;
+    }
+    if matches!(key.code, KeyCode::Char('2')) {
+        return Action::SwitchToSql;
+    }
+
+    if app.mode == AppMode::Sql {
+        return sql_action(app, key.code);
+    }
+
     if app.detail.is_some() {
-        return detail_action(key);
+        return detail_action(key.code);
     }
     if app.search.is_some() {
-        return search_action(key);
+        return search_action(key.code);
     }
     if app.filter_modal.is_some() {
-        return filter_action(app, key);
+        return filter_action(app, key.code);
     }
     if app.modal.is_some() {
-        return modal_action(key);
+        return modal_action(key.code);
     }
-    root_action(key)
+    root_action(key.code)
 }
 
 fn detail_action(key: KeyCode) -> Action {
@@ -33,6 +44,7 @@ fn detail_action(key: KeyCode) -> Action {
 
 fn search_action(key: KeyCode) -> Action {
     match key {
+        KeyCode::BackTab => Action::ReverseFocus,
         KeyCode::Esc => Action::CloseModal,
         KeyCode::Up => Action::MoveUp,
         KeyCode::Down => Action::MoveDown,
@@ -45,6 +57,7 @@ fn search_action(key: KeyCode) -> Action {
 
 fn filter_action(app: &App, key: KeyCode) -> Action {
     match key {
+        KeyCode::BackTab => Action::ReverseFocus,
         KeyCode::Esc => Action::CloseModal,
         KeyCode::Char('q') if app.filter_modal_pane() != Some(FilterPane::Draft) => {
             Action::CloseModal
@@ -66,6 +79,7 @@ fn filter_action(app: &App, key: KeyCode) -> Action {
 
 fn modal_action(key: KeyCode) -> Action {
     match key {
+        KeyCode::BackTab => Action::ReverseFocus,
         KeyCode::Esc | KeyCode::Char('q') => Action::CloseModal,
         KeyCode::Tab => Action::ToggleFocus,
         KeyCode::Up => Action::MoveUp,
@@ -85,6 +99,7 @@ fn modal_action(key: KeyCode) -> Action {
 
 fn root_action(key: KeyCode) -> Action {
     match key {
+        KeyCode::BackTab => Action::ReverseFocus,
         KeyCode::Char('q') => Action::Quit,
         KeyCode::Esc => Action::CloseModal,
         KeyCode::Tab => Action::ToggleFocus,
@@ -102,6 +117,31 @@ fn root_action(key: KeyCode) -> Action {
         KeyCode::Delete | KeyCode::Backspace => Action::Delete,
         KeyCode::Char('c') => Action::Clear,
         KeyCode::Char('r') => Action::Reload,
+        _ => Action::None,
+    }
+}
+
+fn sql_action(app: &App, key: KeyCode) -> Action {
+    match key {
+        KeyCode::BackTab => Action::ReverseFocus,
+        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Esc => Action::CloseModal,
+        KeyCode::Tab => Action::ToggleFocus,
+        KeyCode::F(5) => Action::ExecuteSql,
+        KeyCode::F(2) => Action::OpenCompletion,
+        KeyCode::Up => Action::MoveUp,
+        KeyCode::Down => Action::MoveDown,
+        KeyCode::Left => Action::MoveLeft,
+        KeyCode::Right => Action::MoveRight,
+        KeyCode::Home => Action::MoveHome,
+        KeyCode::End => Action::MoveEnd,
+        KeyCode::PageUp => Action::PageUp,
+        KeyCode::PageDown => Action::PageDown,
+        KeyCode::Enter => Action::NewLine,
+        KeyCode::Delete => Action::Delete,
+        KeyCode::Backspace => Action::Backspace,
+        KeyCode::Char('c') if app.sql_focus() != SqlPane::Editor => Action::Clear,
+        KeyCode::Char(ch) if !ch.is_control() => Action::InputChar(ch),
         _ => Action::None,
     }
 }

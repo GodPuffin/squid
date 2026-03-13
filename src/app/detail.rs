@@ -33,13 +33,20 @@ impl App {
     pub(super) fn handle_detail(&mut self, action: Action) -> Result<()> {
         match action {
             Action::CloseModal | Action::Quit => self.detail = None,
+            Action::ReverseFocus => self.detail_move_left(),
             Action::MoveLeft => self.detail_move_left(),
             Action::MoveRight | Action::ToggleFocus => self.detail_move_right(),
             Action::MoveUp => self.detail_move_up(),
             Action::MoveDown => self.detail_move_down(),
             Action::FollowLink | Action::Confirm => self.follow_detail_link()?,
             Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
             | Action::ToggleView
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
             | Action::OpenConfig
             | Action::ToggleItem
             | Action::Delete
@@ -49,7 +56,10 @@ impl App {
             | Action::OpenSearchAll
             | Action::OpenFilters
             | Action::InputChar(_)
-            | Action::Backspace => {}
+            | Action::Backspace
+            | Action::ExecuteSql
+            | Action::OpenCompletion
+            | Action::NewLine => {}
         }
 
         Ok(())

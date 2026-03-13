@@ -1,3 +1,4 @@
+mod execute;
 mod query;
 mod schema;
 mod search;
@@ -85,6 +86,18 @@ pub struct RowRecord {
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 
+#[derive(Debug, Clone)]
+pub enum SqlExecutionResult {
+    Rows {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
+    Statement {
+        affected_rows: usize,
+        description: String,
+    },
+}
+
 impl RowPreview {
     pub fn empty() -> Self {
         Self {
@@ -103,7 +116,7 @@ impl Database {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open_with_flags(
             path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_URI,
         )
         .with_context(|| format!("failed to open database {}", path.display()))?;
 
