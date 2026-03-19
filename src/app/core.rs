@@ -229,6 +229,10 @@ impl App {
 
     pub(super) fn reload(&mut self) -> Result<()> {
         self.db = Database::open(&self.path)?;
+        self.refresh_loaded_db_state()
+    }
+
+    pub(super) fn refresh_loaded_db_state(&mut self) -> Result<()> {
         self.tables = self.db.list_tables()?;
         if self.selected_table >= self.tables.len() {
             self.selected_table = self.tables.len().saturating_sub(1);
