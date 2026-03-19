@@ -948,6 +948,40 @@ mod tests {
         let _ = fs::remove_file(path);
     }
 
+    #[test]
+    fn sql_execute_keeps_temp_tables_visible_in_browse() {
+        let path = temp_db_path("temp-browse");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+
+        app.sql.query = "CREATE TEMP TABLE temp_demo(value TEXT)".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_execute().expect("create temp table");
+
+        let temp_index = app
+            .tables
+            .iter()
+            .position(|table| table.name == "temp_demo")
+            .expect("temp table should be listed");
+        app.selected_table = temp_index;
+        app.refresh_preview().expect("refresh temp preview");
+
+        assert_eq!(app.selected_table_name(), Some("temp_demo"));
+        assert_eq!(app.preview.total_rows, 0);
+        assert_eq!(
+            app.details
+                .as_ref()
+                .and_then(|details| details.create_sql.as_deref()),
+            Some("CREATE TABLE temp_demo(value TEXT)")
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
     fn temp_db_path(label: &str) -> PathBuf {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

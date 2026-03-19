@@ -135,8 +135,15 @@ impl Database {
     pub fn list_tables(&self) -> Result<Vec<TableSummary>> {
         let mut stmt = self.conn.prepare(
             "SELECT name
-             FROM sqlite_master
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             FROM (
+                 SELECT name
+                 FROM sqlite_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                 UNION
+                 SELECT name
+                 FROM sqlite_temp_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             )
              ORDER BY name",
         )?;
 
