@@ -7,7 +7,7 @@ mod value;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 #[derive(Debug, Clone)]
 pub struct TableSummary {
@@ -115,11 +115,19 @@ pub struct Database {
 
 impl Database {
     pub fn open(path: &Path) -> Result<Self> {
-        let conn = Connection::open_with_flags(
-            path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-        )
-        .with_context(|| format!("failed to open database {}", path.display()))?;
+        let read_write_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI;
+        let conn = match Connection::open_with_flags(path, read_write_flags) {
+            Ok(conn) => conn,
+            Err(read_write_err) => {
+                let read_only_flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+                Connection::open_with_flags(path, read_only_flags).with_context(|| {
+                    format!(
+                        "failed to open database {} for read-write or read-only access (read-write attempt failed: {read_write_err})",
+                        path.display()
+                    )
+                })?
+            }
+        };
 
         Ok(Self { conn })
     }

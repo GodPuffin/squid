@@ -60,7 +60,7 @@ fn describe_statement(sql: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use rusqlite::Connection;
@@ -136,6 +136,57 @@ mod tests {
     }
 
     #[test]
+    fn open_read_only_database_allows_selects() {
+        let path = temp_db_path("readonly-open");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+            .expect("seed");
+        drop(conn);
+
+        let uri = read_only_uri(&path);
+        let db = Database::open(uri.as_path()).expect("open db");
+        let result = db
+            .execute_sql("SELECT name FROM demo", 50)
+            .expect("select from readonly db");
+
+        match result {
+            SqlExecutionResult::Rows {
+                columns,
+                rows,
+                is_mutation,
+            } => {
+                assert_eq!(columns, vec!["name"]);
+                assert_eq!(rows, vec![vec!["alpha".to_string()]]);
+                assert!(!is_mutation);
+            }
+            SqlExecutionResult::Statement { .. } => panic!("expected rows"),
+        }
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn execute_sql_reports_read_only_write_failures() {
+        let path = temp_db_path("readonly-write");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let uri = read_only_uri(&path);
+        let db = Database::open(uri.as_path()).expect("open db");
+        let error = db
+            .execute_sql("INSERT INTO demo(name) VALUES ('blocked')", 50)
+            .expect_err("write should fail");
+
+        assert!(error.to_string().to_ascii_lowercase().contains("readonly"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn execute_sql_reports_errors() {
         let path = temp_db_path("error");
         let conn = Connection::open(&path).expect("create db");
@@ -198,6 +249,10 @@ mod tests {
         }
 
         let _ = fs::remove_file(path);
+    }
+
+    fn read_only_uri(path: &Path) -> PathBuf {
+        PathBuf::from(format!("file:{}?mode=ro", path.display()))
     }
 
     fn temp_db_path(label: &str) -> PathBuf {
