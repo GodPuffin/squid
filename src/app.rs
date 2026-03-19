@@ -1,10 +1,12 @@
 mod core;
 mod detail;
 mod filter;
+mod home;
 mod modal;
 mod navigation;
 mod presenter;
 mod search;
+mod sql;
 mod state;
 mod table_config;
 
@@ -12,10 +14,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::db::{Database, RowPreview, TableDetails, TableSummary};
+pub use home::{RecentItem, RecentStore};
 
 pub use state::{
-    DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState, FilterPane,
-    ModalPane, ModalState, SearchScope, SearchState,
+    AppMode, DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState,
+    FilterPane, ModalPane, ModalState, SearchScope, SearchState, SqlCompletionItem,
+    SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState, SqlState,
 };
 pub use table_config::{FilterRule, SortRule, TableConfig};
 
@@ -40,12 +44,19 @@ pub enum ContentView {
 pub enum Action {
     None,
     Quit,
+    SwitchToBrowse,
+    SwitchToSql,
     ToggleFocus,
+    ReverseFocus,
     ToggleView,
     MoveUp,
     MoveDown,
     MoveLeft,
     MoveRight,
+    MoveHome,
+    MoveEnd,
+    PageUp,
+    PageDown,
     OpenConfig,
     CloseModal,
     ToggleItem,
@@ -57,13 +68,16 @@ pub enum Action {
     OpenSearchCurrent,
     OpenSearchAll,
     OpenFilters,
+    ExecuteSql,
+    NewLine,
     InputChar(char),
     Backspace,
 }
 
 pub struct App {
-    path: PathBuf,
-    pub db: Database,
+    pub mode: AppMode,
+    path: Option<PathBuf>,
+    pub db: Option<Database>,
     pub tables: Vec<TableSummary>,
     pub selected_table: usize,
     pub focus: PaneFocus,
@@ -79,5 +93,9 @@ pub struct App {
     pub filter_modal: Option<FilterModalState>,
     pub modal: Option<ModalState>,
     pub search: Option<SearchState>,
+    pub recent_items: Vec<RecentItem>,
+    pub selected_recent: usize,
+    pub status_message: Option<String>,
+    pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
 }

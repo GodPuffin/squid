@@ -1,9 +1,73 @@
 use crate::db::{FilterMode, SearchHit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppMode {
+    Home,
+    Browse,
+    Sql,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SearchScope {
     CurrentTable,
     AllTables,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SqlPane {
+    Editor,
+    History,
+    Results,
+}
+
+#[derive(Clone, Debug)]
+pub struct SqlHistoryEntry {
+    pub query: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SqlCompletionItem {
+    pub label: String,
+    pub insert_text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SqlCompletionState {
+    pub prefix_start: usize,
+    pub items: Vec<SqlCompletionItem>,
+    pub selected: usize,
+}
+
+#[derive(Clone, Debug)]
+pub enum SqlResultState {
+    Empty,
+    Rows {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
+    Message {
+        text: String,
+        is_error: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct SqlState {
+    pub query: String,
+    pub cursor: usize,
+    pub editor_scroll: usize,
+    pub editor_height: usize,
+    pub focus: SqlPane,
+    pub history: Vec<SqlHistoryEntry>,
+    pub history_offset: usize,
+    pub history_height: usize,
+    pub selected_history: usize,
+    pub result: SqlResultState,
+    pub result_scroll: usize,
+    pub result_height: usize,
+    pub completion: Option<SqlCompletionState>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug)]

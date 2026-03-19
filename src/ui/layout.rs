@@ -1,6 +1,6 @@
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 
-use crate::app::App;
+use crate::app::{App, AppMode};
 
 pub struct ViewportSizes {
     pub row_limit: usize,
@@ -11,14 +11,28 @@ pub struct ViewportSizes {
 
 pub struct LayoutInfo {
     pub header: Rect,
+    pub header_tabs: HeaderTabRects,
     pub tables: Rect,
     pub content: Rect,
     pub footer: Rect,
     pub search_box: Option<Rect>,
     pub search_results: Option<Rect>,
+    pub sql: Option<SqlRects>,
     pub detail: Option<DetailRects>,
     pub filter_modal: Option<FilterModalRects>,
     pub modal: Option<ModalRects>,
+}
+
+pub struct HeaderTabRects {
+    pub browse: Rect,
+    pub sql: Rect,
+}
+
+pub struct SqlRects {
+    pub editor: Rect,
+    pub history: Rect,
+    pub results: Rect,
+    pub completion: Option<Rect>,
 }
 
 pub struct ModalRects {
@@ -65,20 +79,85 @@ pub fn viewport_sizes(area: Rect) -> ViewportSizes {
 }
 
 pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
+    if app.is_home() {
+        let home = home_layout(area);
+        return LayoutInfo {
+            header: home.header,
+            header_tabs: header_tab_rects(home.header),
+            tables: home.recents,
+            content: home.content,
+            footer: home.footer,
+            search_box: None,
+            search_results: None,
+            sql: None,
+            detail: None,
+            filter_modal: None,
+            modal: None,
+        };
+    }
+
     let areas = root_layout(area);
-    let tables_width = app.table_pane_width();
-    let body = body_layout(areas[1], tables_width);
+    let body = if app.mode == AppMode::Browse {
+        body_layout(areas[1], app.table_pane_width())
+    } else {
+        vec![Rect::default(), areas[1]]
+    };
 
     LayoutInfo {
         header: areas[0],
+        header_tabs: header_tab_rects(areas[0]),
         tables: body[0],
         content: body[1],
         footer: areas[2],
         search_box: app.search.as_ref().map(|_| search_layout(body[1])[0]),
         search_results: app.search.as_ref().map(|_| search_layout(body[1])[1]),
+        sql: (app.mode == AppMode::Sql).then(|| {
+            let mut sql = sql_layout(body[1]);
+            if !app.sql_completion_items().is_empty() {
+                let (line, col) = app.sql_cursor_line_col();
+                sql.completion = Some(sql_completion_rect(
+                    sql.editor,
+                    line.saturating_sub(app.sql.editor_scroll),
+                    col,
+                ));
+            }
+            sql
+        }),
         detail: app.detail.as_ref().map(|_| detail_rects(area)),
         filter_modal: app.filter_modal.as_ref().map(|_| filter_modal_rects(area)),
         modal: app.modal.as_ref().map(|_| modal_rects(area)),
+    }
+}
+
+struct HomeLayout {
+    header: Rect,
+    content: Rect,
+    recents: Rect,
+    footer: Rect,
+}
+
+fn home_layout(area: Rect) -> HomeLayout {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Length(8),
+            Constraint::Length(9),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+    let recents = centered_rect(vertical[2], 34, 100);
+    let content = centered_rect(vertical[3], 60, 100);
+    let footer = centered_rect(vertical[4], 70, 100);
+
+    HomeLayout {
+        header: vertical[1],
+        content,
+        recents,
+        footer,
     }
 }
 
@@ -90,6 +169,29 @@ pub fn list_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
         return None;
     }
     Some((row - area.y - 1) as usize)
+}
+
+pub fn list_scroll_offset(area: Rect, selected: usize, item_count: usize) -> usize {
+    let visible_rows = area.height.saturating_sub(2) as usize;
+    if visible_rows == 0 || item_count <= visible_rows {
+        return 0;
+    }
+
+    selected
+        .saturating_sub(visible_rows.saturating_sub(1))
+        .min(item_count.saturating_sub(visible_rows))
+}
+
+pub fn home_recent_row_at(
+    area: Rect,
+    column: u16,
+    row: u16,
+    selected: usize,
+    item_count: usize,
+) -> Option<usize> {
+    let relative_index = list_row_at(area, column, row)?;
+    let absolute_index = list_scroll_offset(area, selected, item_count) + relative_index;
+    (absolute_index < item_count).then_some(absolute_index)
 }
 
 pub fn table_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
@@ -138,6 +240,52 @@ pub fn search_layout(area: Rect) -> Vec<Rect> {
         .constraints([Constraint::Length(3), Constraint::Min(6)])
         .split(area)
         .to_vec()
+}
+
+pub fn sql_layout(area: Rect) -> SqlRects {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+        .split(area);
+    let bottom = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .split(vertical[1]);
+
+    SqlRects {
+        editor: vertical[0],
+        history: bottom[0],
+        results: bottom[1],
+        completion: None,
+    }
+}
+
+pub fn header_tab_rects(area: Rect) -> HeaderTabRects {
+    let inner_x = area.x.saturating_add(2);
+    let inner_y = area.y.saturating_add(1);
+    let browse = Rect::new(inner_x, inner_y, 10, 1);
+    let sql = Rect::new(inner_x.saturating_add(11), inner_y, 7, 1);
+    HeaderTabRects { browse, sql }
+}
+
+pub fn sql_completion_rect(editor_area: Rect, cursor_line: usize, cursor_col: usize) -> Rect {
+    let popup_height = 8;
+    let popup_width = 24;
+    let x = editor_area
+        .x
+        .saturating_add(1)
+        .saturating_add(cursor_col.min(editor_area.width.saturating_sub(4) as usize) as u16);
+    let y = editor_area
+        .y
+        .saturating_add(1)
+        .saturating_add(cursor_line as u16 + 1);
+
+    Rect::new(
+        x.min(editor_area.x + editor_area.width.saturating_sub(popup_width + 1)),
+        y.min(editor_area.y + editor_area.height.saturating_sub(popup_height + 1)),
+        popup_width.min(editor_area.width.saturating_sub(2)),
+        popup_height.min(editor_area.height.saturating_sub(2)),
+    )
 }
 
 pub fn modal_rects(area: Rect) -> ModalRects {
@@ -247,3 +395,7 @@ pub fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rec
         .flex(Flex::Center)
         .split(vertical[1])[1]
 }
+
+#[cfg(test)]
+#[path = "../testing/ui/layout.rs"]
+mod tests;

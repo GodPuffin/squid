@@ -38,3 +38,6 @@ jobs:
 
       - name: Cargo build
         run: cargo build
+
+      - name: Cargo test
+        run: cargo test

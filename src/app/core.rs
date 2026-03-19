@@ -1,19 +1,26 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use crate::db::{Database, RowPreview};
 
-use super::{Action, App, ContentView, PaneFocus};
+use super::{
+    Action, App, AppMode, ContentView, PaneFocus, RecentStore, home::normalize_database_path,
+};
+use super::{SqlPane, SqlResultState, SqlState};
 
 impl App {
-    pub fn load(path: PathBuf) -> Result<Self> {
-        let db = Database::open(&path)?;
-        let tables = db.list_tables()?;
+    pub fn load(path: Option<PathBuf>) -> Result<Self> {
+        let (recent_items, status_message) = match RecentStore::load() {
+            Ok(items) => (items, None),
+            Err(error) => (Vec::new(), Some(format!("Could not load recents: {error}"))),
+        };
+
         let mut app = Self {
-            path,
-            db,
-            tables,
+            mode: AppMode::Home,
+            path: None,
+            db: None,
+            tables: Vec::new(),
             selected_table: 0,
             focus: PaneFocus::Tables,
             content_view: ContentView::Rows,
@@ -28,13 +35,59 @@ impl App {
             filter_modal: None,
             modal: None,
             search: None,
+            recent_items,
+            selected_recent: 0,
+            status_message,
+            sql: SqlState {
+                query: String::new(),
+                cursor: 0,
+                editor_scroll: 0,
+                editor_height: 8,
+                focus: SqlPane::Editor,
+                history: Vec::new(),
+                history_offset: 0,
+                history_height: 8,
+                selected_history: 0,
+                result: SqlResultState::Empty,
+                result_scroll: 0,
+                result_height: 8,
+                completion: None,
+                status: "SQL mode ready".to_string(),
+            },
             configs: std::collections::HashMap::new(),
         };
-        app.refresh_preview()?;
+
+        if let Some(path) = path {
+            app.open_database(&path)?;
+        } else {
+            app.refresh_home_selection();
+        }
+
         Ok(app)
     }
 
     pub fn handle(&mut self, action: Action) -> Result<()> {
+        if self.is_home() {
+            return self.handle_home(action);
+        }
+
+        if matches!(action, Action::SwitchToBrowse) {
+            self.mode = AppMode::Browse;
+            return Ok(());
+        }
+        if matches!(action, Action::SwitchToSql) {
+            self.mode = AppMode::Sql;
+            self.detail = None;
+            self.modal = None;
+            self.filter_modal = None;
+            self.search = None;
+            return Ok(());
+        }
+
+        if self.mode == AppMode::Sql {
+            return self.handle_sql(action);
+        }
+
         if self.detail.is_some() {
             return self.handle_detail(action);
         }
@@ -54,7 +107,7 @@ impl App {
         match action {
             Action::None => {}
             Action::Quit => {}
-            Action::ToggleFocus => self.toggle_focus(),
+            Action::ToggleFocus | Action::ReverseFocus => self.toggle_focus(),
             Action::ToggleView => self.toggle_view(),
             Action::MoveUp => self.move_up()?,
             Action::MoveDown => self.move_down()?,
@@ -70,8 +123,16 @@ impl App {
             | Action::FollowLink
             | Action::Delete
             | Action::Clear
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
+            | Action::ExecuteSql
+            | Action::NewLine
             | Action::InputChar(_)
-            | Action::Backspace => {}
+            | Action::Backspace
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql => {}
         }
 
         Ok(())
@@ -84,6 +145,10 @@ impl App {
         detail_value_width: usize,
         detail_value_height: usize,
     ) -> Result<()> {
+        if self.is_home() {
+            return Ok(());
+        }
+
         let row_limit = row_limit.max(1);
         let schema_page_lines = schema_page_lines.max(1);
         let detail_value_width = detail_value_width.max(1);
@@ -112,6 +177,8 @@ impl App {
             self.clamp_search_viewport();
         }
 
+        self.ensure_sql_viewport();
+
         if needs_refresh {
             self.refresh_preview()?;
         }
@@ -119,8 +186,16 @@ impl App {
         Ok(())
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+    pub fn path(&self) -> Option<&PathBuf> {
+        self.path.as_ref()
+    }
+
+    pub fn is_home(&self) -> bool {
+        self.mode == AppMode::Home
+    }
+
+    pub fn selected_recent_item(&self) -> Option<&super::RecentItem> {
+        self.recent_items.get(self.selected_recent)
     }
 
     pub fn selected_table_name(&self) -> Option<&str> {
@@ -136,6 +211,17 @@ impl App {
     }
 
     pub fn table_pane_width(&self) -> u16 {
+        if self.is_home() {
+            let longest_path = self
+                .recent_items
+                .iter()
+                .map(|item| item.path.display().to_string().chars().count())
+                .max()
+                .unwrap_or("No recent files".len());
+            let width = longest_path.saturating_add(6);
+            return width.min(48) as u16;
+        }
+
         let longest_name = self
             .tables
             .iter()
@@ -154,6 +240,9 @@ impl App {
     }
 
     pub(super) fn toggle_view(&mut self) {
+        if self.is_home() {
+            return;
+        }
         self.detail = None;
         self.content_view = match self.content_view {
             ContentView::Rows => ContentView::Schema,
@@ -162,6 +251,13 @@ impl App {
     }
 
     pub(super) fn move_up(&mut self) -> Result<()> {
+        if self.is_home() {
+            if self.focus == PaneFocus::Tables {
+                self.move_recent_selection_up();
+            }
+            return Ok(());
+        }
+
         match self.focus {
             PaneFocus::Tables => self.move_table_selection_up()?,
             PaneFocus::Content => match self.content_view {
@@ -173,6 +269,13 @@ impl App {
     }
 
     pub(super) fn move_down(&mut self) -> Result<()> {
+        if self.is_home() {
+            if self.focus == PaneFocus::Tables {
+                self.move_recent_selection_down();
+            }
+            return Ok(());
+        }
+
         match self.focus {
             PaneFocus::Tables => self.move_table_selection_down()?,
             PaneFocus::Content => match self.content_view {
@@ -184,8 +287,29 @@ impl App {
     }
 
     pub(super) fn reload(&mut self) -> Result<()> {
-        self.db = Database::open(&self.path)?;
-        self.tables = self.db.list_tables()?;
+        if self.is_home() {
+            match RecentStore::load() {
+                Ok(items) => {
+                    self.recent_items = items;
+                    self.refresh_home_selection();
+                    self.status_message = Some("Reloaded recent databases".to_string());
+                }
+                Err(error) => {
+                    self.status_message = Some(format!("Could not reload recents: {error}"));
+                }
+            }
+            return Ok(());
+        }
+
+        let Some(path) = self.path.clone() else {
+            return Ok(());
+        };
+        self.db = Some(Database::open(&path)?);
+        self.refresh_loaded_db_state()
+    }
+
+    pub(super) fn refresh_loaded_db_state(&mut self) -> Result<()> {
+        self.tables = self.db_ref()?.list_tables()?;
         if self.selected_table >= self.tables.len() {
             self.selected_table = self.tables.len().saturating_sub(1);
         }
@@ -255,8 +379,13 @@ impl App {
     }
 
     pub(super) fn refresh_preview(&mut self) -> Result<()> {
+        if self.is_home() {
+            return Ok(());
+        }
+
         if let Some(table_name) = self.selected_table_name().map(str::to_owned) {
-            self.details = Some(self.db.table_details(&table_name)?);
+            let db = self.db_ref()?;
+            self.details = Some(db.table_details(&table_name)?);
             self.ensure_table_config();
 
             if let Some(details) = &self.details {
@@ -269,7 +398,7 @@ impl App {
                 }
             }
 
-            self.preview = self.db.preview_table(
+            self.preview = self.db_ref()?.preview_table(
                 &table_name,
                 &self.visible_column_names(),
                 &self.current_sort_clauses(),
@@ -330,5 +459,153 @@ impl App {
         self.selected_row = 0;
         self.row_offset = 0;
         self.schema_offset = 0;
+    }
+
+    pub(super) fn db_ref(&self) -> Result<&Database> {
+        self.db
+            .as_ref()
+            .ok_or_else(|| anyhow!("database is not loaded"))
+    }
+
+    pub(super) fn open_database(&mut self, path: &Path) -> Result<()> {
+        let absolute_path = normalize_database_path(path)?;
+        let db = Database::open(&absolute_path)?;
+        let tables = db.list_tables()?;
+
+        self.mode = AppMode::Browse;
+        self.path = Some(absolute_path.clone());
+        self.db = Some(db);
+        self.tables = tables;
+        self.selected_table = 0;
+        self.focus = PaneFocus::Tables;
+        self.content_view = ContentView::Rows;
+        self.preview = RowPreview::empty();
+        self.details = None;
+        self.detail = None;
+        self.filter_modal = None;
+        self.modal = None;
+        self.search = None;
+        self.status_message = None;
+        self.reset_content_position();
+        self.refresh_preview()?;
+        match RecentStore::record(&absolute_path) {
+            Ok(items) => {
+                self.recent_items = items;
+                if !self.recent_items.is_empty() {
+                    self.selected_recent = self
+                        .recent_items
+                        .iter()
+                        .position(|item| item.path == absolute_path)
+                        .unwrap_or(0);
+                }
+            }
+            Err(error) => {
+                self.status_message = Some(format!(
+                    "Opened database but could not save recents: {error}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_home(&mut self, action: Action) -> Result<()> {
+        match action {
+            Action::Quit => {}
+            Action::ToggleFocus | Action::MoveLeft | Action::MoveRight => self.toggle_focus(),
+            Action::MoveUp => self.move_up()?,
+            Action::MoveDown => self.move_down()?,
+            Action::Confirm => self.open_selected_recent(),
+            Action::Delete => self.delete_selected_recent(),
+            Action::Reload => {
+                self.reload()?;
+            }
+            Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
+            | Action::ReverseFocus
+            | Action::ToggleView
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
+            | Action::OpenConfig
+            | Action::CloseModal
+            | Action::ToggleItem
+            | Action::Clear
+            | Action::OpenSearchCurrent
+            | Action::OpenSearchAll
+            | Action::OpenFilters
+            | Action::ExecuteSql
+            | Action::NewLine
+            | Action::InputChar(_)
+            | Action::Backspace
+            | Action::FollowLink => {}
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn move_recent_selection_up(&mut self) {
+        if self.selected_recent > 0 {
+            self.selected_recent -= 1;
+        }
+    }
+
+    pub(super) fn move_recent_selection_down(&mut self) {
+        if self.selected_recent + 1 < self.recent_items.len() {
+            self.selected_recent += 1;
+        }
+    }
+
+    fn open_selected_recent(&mut self) {
+        let Some(item) = self.selected_recent_item().cloned() else {
+            return;
+        };
+
+        match self.open_database(&item.path) {
+            Ok(()) => {}
+            Err(error) => {
+                self.status_message =
+                    Some(format!("Could not open {}: {error}", item.path.display()));
+                self.mode = AppMode::Home;
+                self.db = None;
+                self.path = None;
+                self.tables.clear();
+                self.details = None;
+                self.preview = RowPreview::empty();
+            }
+        }
+    }
+
+    fn delete_selected_recent(&mut self) {
+        let Some(item) = self.selected_recent_item().cloned() else {
+            return;
+        };
+
+        match RecentStore::remove(&item.path) {
+            Ok(items) => {
+                self.recent_items = items;
+                self.refresh_home_selection();
+                self.status_message = Some(format!("Removed {} from recents", item.path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!(
+                    "Could not remove {} from recents: {error}",
+                    item.path.display()
+                ));
+            }
+        }
+    }
+
+    fn refresh_home_selection(&mut self) {
+        if self.recent_items.is_empty() {
+            self.selected_recent = 0;
+            self.focus = PaneFocus::Content;
+        } else {
+            self.selected_recent = self
+                .selected_recent
+                .min(self.recent_items.len().saturating_sub(1));
+            self.focus = PaneFocus::Tables;
+        }
     }
 }

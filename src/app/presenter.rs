@@ -2,10 +2,23 @@ use sqlformat::{FormatOptions, QueryParams};
 
 use crate::db::FilterMode;
 
-use super::{App, FilterPane, ModalPane, SearchScope};
+use super::{App, AppMode, FilterPane, ModalPane, SearchScope};
+
+const HOME_LOGO: &str = concat!(
+    " ▄▄▄▄▄▄▄   ▄▄▄▄▄   ▄▄▄  ▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄\n",
+    "█████▀▀▀ ▄███████▄ ███  ███  ███  ███▀▀██▄\n",
+    " ▀████▄  ███   ███ ███  ███  ███  ███  ███\n",
+    "   ▀████ ███▄█▄███ ███▄▄███  ███  ███  ███\n",
+    "███████▀  ▀█████▀  ▀██████▀ ▄███▄ ██████▀\n",
+    "               ▀▀"
+);
 
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
+        if self.is_home() {
+            return self.home_screen_lines();
+        }
+
         let Some(details) = &self.details else {
             return vec!["No schema details available".to_string()];
         };
@@ -41,6 +54,12 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
+        if self.is_home() {
+            return "up/down move  enter open  del remove  r reload  q quit".to_string();
+        }
+        if self.mode == AppMode::Sql {
+            return "1 browse  2 sql  Tab cycle panes  F5 run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q quit outside editor".to_string();
+        }
         if self.detail.is_some() {
             "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
         } else if self.filter_modal.is_some() {
@@ -66,6 +85,10 @@ impl App {
     }
 
     pub fn content_title(&self) -> String {
+        if self.is_home() {
+            return "Home".to_string();
+        }
+
         let table = self.selected_table_name().unwrap_or("Rows");
         let hidden = self.hidden_column_count();
         let filters = self.filter_summary();
@@ -260,6 +283,49 @@ impl App {
                 }
             })
             .collect()
+    }
+
+    pub fn home_status_line(&self) -> Option<String> {
+        if !self.is_home() {
+            return None;
+        }
+
+        if let Some(status) = &self.status_message {
+            Some(status.clone())
+        } else {
+            self.selected_recent_item().map(|item| {
+                if item.available {
+                    format!("Selected: {}", item.path.display())
+                } else {
+                    format!("Missing: {}", item.path.display())
+                }
+            })
+        }
+    }
+
+    pub fn home_recent_lines(&self) -> Vec<String> {
+        if self.recent_items.is_empty() {
+            vec!["No recent files".to_string()]
+        } else {
+            self.recent_items
+                .iter()
+                .map(|item| {
+                    if item.available {
+                        item.path.display().to_string()
+                    } else {
+                        format!("{} [missing]", item.path.display())
+                    }
+                })
+                .collect()
+        }
+    }
+
+    pub fn home_logo_lines(&self) -> Vec<String> {
+        HOME_LOGO.lines().map(str::to_string).collect()
+    }
+
+    fn home_screen_lines(&self) -> Vec<String> {
+        self.home_logo_lines()
     }
 }
 

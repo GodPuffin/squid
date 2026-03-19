@@ -12,6 +12,14 @@ impl App {
     }
 
     pub fn select_table_by_index(&mut self, index: usize) -> Result<()> {
+        if self.is_home() {
+            if index < self.recent_items.len() {
+                self.selected_recent = index;
+                self.focus_tables();
+            }
+            return Ok(());
+        }
+
         if index < self.tables.len() && index != self.selected_table {
             self.selected_table = index;
             self.detail = None;
@@ -50,7 +58,13 @@ impl App {
 
     pub fn scroll_tables(&mut self, delta: isize) -> Result<()> {
         self.focus_tables();
-        if delta < 0 {
+        if self.is_home() {
+            if delta < 0 {
+                self.move_recent_selection_up();
+            } else if delta > 0 {
+                self.move_recent_selection_down();
+            }
+        } else if delta < 0 {
             self.move_table_selection_up()?;
         } else if delta > 0 {
             self.move_table_selection_down()?;
@@ -60,6 +74,9 @@ impl App {
 
     pub fn scroll_content(&mut self, delta: isize) -> Result<()> {
         self.focus_content();
+        if self.is_home() {
+            return Ok(());
+        }
         match self.content_view {
             ContentView::Rows => {
                 if delta < 0 {

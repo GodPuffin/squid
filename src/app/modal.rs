@@ -44,6 +44,7 @@ impl App {
                 self.modal = None;
                 self.open_filter_modal();
             }
+            Action::ReverseFocus => self.modal_move_left(),
             Action::MoveLeft => self.modal_move_left(),
             Action::MoveRight | Action::ToggleFocus => self.modal_move_right(),
             Action::MoveUp => self.modal_move_up(),
@@ -53,13 +54,21 @@ impl App {
             Action::Delete => self.modal_delete_sort()?,
             Action::Clear => self.modal_clear_sorts()?,
             Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
             | Action::ToggleView
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
             | Action::Reload
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::FollowLink
             | Action::InputChar(_)
-            | Action::Backspace => {}
+            | Action::Backspace
+            | Action::ExecuteSql
+            | Action::NewLine => {}
         }
 
         Ok(())

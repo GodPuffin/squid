@@ -12,9 +12,13 @@ use clap::Parser;
 #[command(author, version, about = "SQLite file viewer TUI built with ratatui")]
 struct Cli {
     /// Path to a SQLite database file
-    path: PathBuf,
+    path: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
     runtime::run(Cli::parse().path)
 }
+
+#[cfg(test)]
+#[path = "testing/main_cli.rs"]
+mod tests;

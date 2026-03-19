@@ -9,7 +9,8 @@ use crate::ui::{self, LayoutInfo};
 #[derive(Default)]
 pub struct MouseState {
     last_search_click: Option<(usize, Instant)>,
-    last_row_click: Option<(usize, Instant)>,
+    last_home_click: Option<(usize, Instant)>,
+    last_table_row_click: Option<(usize, Instant)>,
 }
 
 pub fn handle_mouse_event(
@@ -21,6 +22,72 @@ pub fn handle_mouse_event(
 ) -> Result<()> {
     let column = mouse.column;
     let row = mouse.row;
+
+    if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        if contains(layout.header_tabs.browse, column, row) {
+            app.handle(Action::SwitchToBrowse)?;
+            return Ok(());
+        }
+        if contains(layout.header_tabs.sql, column, row) {
+            app.handle(Action::SwitchToSql)?;
+            return Ok(());
+        }
+    }
+
+    if let Some(sql) = &layout.sql {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(completion) = sql.completion
+                    && let Some(index) = ui::list_row_at(completion, column, row)
+                {
+                    app.sql_select_completion_in_view(index);
+                    app.sql_apply_selected_completion();
+                } else if contains(sql.editor, column, row) {
+                    let line_in_view = row.saturating_sub(sql.editor.y + 1) as usize;
+                    let col_in_view = column.saturating_sub(sql.editor.x) as usize;
+                    app.sql_set_cursor_from_view(line_in_view, col_in_view);
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(completion) = sql.completion
+                    && contains(completion, column, row)
+                {
+                    app.handle(Action::MoveUp)?;
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                    app.handle(Action::MoveUp)?;
+                } else if contains(sql.editor, column, row) {
+                    app.sql_focus_editor();
+                    app.handle(Action::MoveUp)?;
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                    app.handle(Action::MoveUp)?;
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(completion) = sql.completion
+                    && contains(completion, column, row)
+                {
+                    app.handle(Action::MoveDown)?;
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                    app.handle(Action::MoveDown)?;
+                } else if contains(sql.editor, column, row) {
+                    app.sql_focus_editor();
+                    app.handle(Action::MoveDown)?;
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                    app.handle(Action::MoveDown)?;
+                }
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
 
     if let Some(modal) = &layout.modal {
         match mouse.kind {
@@ -151,19 +218,19 @@ pub fn handle_mouse_event(
                 }
                 if contains(*search_box, column, row) {
                     app.focus_content();
-                    state.last_search_click = None;
+                    clear_click_state(state);
                     return Ok(());
                 }
-                state.last_search_click = None;
+                clear_click_state(state);
             }
             MouseEventKind::ScrollUp if contains(*search_results, column, row) => {
                 app.scroll_search(-1);
-                state.last_search_click = None;
+                clear_click_state(state);
                 return Ok(());
             }
             MouseEventKind::ScrollDown if contains(*search_results, column, row) => {
                 app.scroll_search(1);
-                state.last_search_click = None;
+                clear_click_state(state);
                 return Ok(());
             }
             _ => {}
@@ -172,22 +239,38 @@ pub fn handle_mouse_event(
 
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            if let Some(index) = ui::list_row_at(layout.tables, column, row) {
+            let table_index = if app.is_home() {
+                ui::home_recent_row_at(
+                    layout.tables,
+                    column,
+                    row,
+                    app.selected_recent,
+                    app.recent_items.len(),
+                )
+            } else {
+                ui::list_row_at(layout.tables, column, row)
+            };
+
+            if let Some(index) = table_index {
                 app.select_table_by_index(index)?;
-                state.last_row_click = None;
+                if app.is_home() {
+                    handle_row_double_click(app, state, now)?;
+                } else {
+                    state.last_table_row_click = None;
+                }
             } else if let Some(index) = ui::table_row_at(layout.content, column, row) {
                 app.focus_content();
                 app.select_row_in_view(index)?;
                 handle_row_double_click(app, state, now)?;
             } else if contains(layout.content, column, row) {
                 app.focus_content();
-                state.last_row_click = None;
+                clear_row_click_state(state);
             } else {
-                state.last_row_click = None;
+                clear_row_click_state(state);
             }
         }
         MouseEventKind::ScrollUp => {
-            state.last_row_click = None;
+            clear_row_click_state(state);
             if ui::list_row_at(layout.tables, column, row).is_some() {
                 app.scroll_tables(-1)?;
             } else if contains(layout.content, column, row) {
@@ -195,7 +278,7 @@ pub fn handle_mouse_event(
             }
         }
         MouseEventKind::ScrollDown => {
-            state.last_row_click = None;
+            clear_row_click_state(state);
             if ui::list_row_at(layout.tables, column, row).is_some() {
                 app.scroll_tables(1)?;
             } else if contains(layout.content, column, row) {
@@ -228,12 +311,17 @@ fn handle_search_double_click(app: &mut App, state: &mut MouseState, now: Instan
 }
 
 fn handle_row_double_click(app: &mut App, state: &mut MouseState, now: Instant) -> Result<()> {
-    let selected = app.selected_row;
-    if is_double_click(state.last_row_click, selected, now) {
-        app.handle(Action::Confirm)?;
-        state.last_row_click = None;
+    let (selected, previous_click) = if app.is_home() {
+        (app.selected_recent, &mut state.last_home_click)
     } else {
-        state.last_row_click = Some((selected, now));
+        (app.selected_row, &mut state.last_table_row_click)
+    };
+
+    if is_double_click(*previous_click, selected, now) {
+        app.handle(Action::Confirm)?;
+        *previous_click = None;
+    } else {
+        *previous_click = Some((selected, now));
     }
     Ok(())
 }
@@ -246,4 +334,14 @@ fn is_double_click(previous: Option<(usize, Instant)>, selected: usize, now: Ins
 
 fn contains(area: ratatui::layout::Rect, column: u16, row: u16) -> bool {
     column >= area.x && column < area.x + area.width && row >= area.y && row < area.y + area.height
+}
+
+fn clear_click_state(state: &mut MouseState) {
+    state.last_search_click = None;
+    clear_row_click_state(state);
+}
+
+fn clear_row_click_state(state: &mut MouseState) {
+    state.last_home_click = None;
+    state.last_table_row_click = None;
 }
