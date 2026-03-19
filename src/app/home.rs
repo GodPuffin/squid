@@ -43,7 +43,7 @@ impl RecentStore {
         paths
             .into_iter()
             .map(|path| RecentItem {
-                available: path.is_file(),
+                available: recent_path_is_available(&path),
                 path,
             })
             .collect()
@@ -109,12 +109,16 @@ impl RecentStore {
 pub(super) fn normalize_database_path(path: &Path) -> Result<PathBuf> {
     if let Some(uri_path) = normalize_sqlite_uri_path(path)? {
         Ok(uri_path)
-    } else if preserves_sqlite_special_name(path) || path.is_absolute() {
+    } else if preserves_sqlite_special_name(path) {
         Ok(path.to_path_buf())
+    } else if path.is_absolute() {
+        Ok(normalize_local_path(path))
     } else {
-        Ok(env::current_dir()
-            .context("failed to resolve current directory")?
-            .join(path))
+        Ok(normalize_local_path(
+            &env::current_dir()
+                .context("failed to resolve current directory")?
+                .join(path),
+        ))
     }
 }
 
@@ -129,6 +133,7 @@ fn normalize_sqlite_uri_path(path: &Path) -> Result<Option<PathBuf>> {
     let (filename, suffix) = split_sqlite_uri(raw);
     let uri_path = &filename["file:".len()..];
     if uri_path.is_empty()
+        || uri_path.starts_with(':')
         || uri_path.starts_with('/')
         || uri_path.starts_with('\\')
         || uri_path.starts_with("//")
@@ -137,9 +142,11 @@ fn normalize_sqlite_uri_path(path: &Path) -> Result<Option<PathBuf>> {
         return Ok(Some(path.to_path_buf()));
     }
 
-    let absolute = env::current_dir()
-        .context("failed to resolve current directory")?
-        .join(uri_path);
+    let absolute = normalize_local_path(
+        &env::current_dir()
+            .context("failed to resolve current directory")?
+            .join(uri_path),
+    );
     Ok(Some(PathBuf::from(format!(
         "file:{}{}",
         path_to_sqlite_uri_path(&absolute),
@@ -160,6 +167,70 @@ fn path_to_sqlite_uri_path(path: &Path) -> String {
     normalized
 }
 
+fn recent_path_is_available(path: &Path) -> bool {
+    if let Some(local_path) = sqlite_uri_local_path(path) {
+        return local_path.is_file();
+    }
+
+    if preserves_sqlite_special_name(path) {
+        return true;
+    }
+
+    path.is_file()
+}
+
+fn sqlite_uri_local_path(path: &Path) -> Option<PathBuf> {
+    let raw = path.to_str()?;
+    if !raw.starts_with("file:") {
+        return None;
+    }
+
+    let (filename, _) = split_sqlite_uri(raw);
+    let uri_path = &filename["file:".len()..];
+    if uri_path.is_empty() || uri_path.starts_with(':') {
+        return None;
+    }
+    if uri_path.starts_with("//") {
+        return None;
+    }
+
+    Some(normalize_local_path(&sqlite_uri_path_to_local_path(
+        uri_path,
+    )))
+}
+
+fn normalize_local_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            std::path::Component::RootDir => normalized.push(component.as_os_str()),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() && !path.is_absolute() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            std::path::Component::Normal(part) => normalized.push(part),
+        }
+    }
+
+    normalized
+}
+
+fn sqlite_uri_path_to_local_path(uri_path: &str) -> PathBuf {
+    if cfg!(windows)
+        && uri_path.starts_with('/')
+        && uri_path.as_bytes().get(2) == Some(&b':')
+        && uri_path.as_bytes().get(3) == Some(&b'/')
+    {
+        PathBuf::from(&uri_path[1..])
+    } else {
+        PathBuf::from(uri_path)
+    }
+}
+
 fn preserves_sqlite_special_name(path: &Path) -> bool {
     match path.to_str() {
         Some(":memory:") => true,
@@ -172,7 +243,9 @@ fn preserves_sqlite_special_name(path: &Path) -> bool {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{RecentStore, normalize_database_path, path_to_sqlite_uri_path};
+    use super::{
+        RecentStore, normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available,
+    };
 
     #[test]
     fn load_from_path_ignores_blank_lines() {
@@ -275,6 +348,41 @@ mod tests {
 
         assert!(normalized.is_absolute());
         assert!(normalized.ends_with(path));
+    }
+
+    #[test]
+    fn normalize_database_path_collapses_lexical_aliases() {
+        let canonical = normalize_database_path(std::path::Path::new("sakila.db")).unwrap();
+        let dotted = normalize_database_path(std::path::Path::new("./sakila.db")).unwrap();
+        let parent = normalize_database_path(std::path::Path::new("sub/../sakila.db")).unwrap();
+
+        assert_eq!(canonical, dotted);
+        assert_eq!(canonical, parent);
+    }
+
+    #[test]
+    fn recent_path_is_available_for_sqlite_file_uris() {
+        let path = std::env::temp_dir().join(format!(
+            "squid-available-{}.db",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"sqlite").unwrap();
+
+        let uri =
+            std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
+        assert!(recent_path_is_available(&uri));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn normalize_database_path_preserves_memory_file_uris() {
+        let path = std::path::Path::new("file::memory:?cache=shared");
+
+        assert_eq!(normalize_database_path(path).unwrap(), path);
     }
 
     fn unique_test_path(label: &str) -> std::path::PathBuf {

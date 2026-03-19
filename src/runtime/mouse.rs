@@ -9,7 +9,8 @@ use crate::ui::{self, LayoutInfo};
 #[derive(Default)]
 pub struct MouseState {
     last_search_click: Option<(usize, Instant)>,
-    last_row_click: Option<(usize, Instant)>,
+    last_home_click: Option<(usize, Instant)>,
+    last_table_row_click: Option<(usize, Instant)>,
 }
 
 pub fn handle_mouse_event(
@@ -151,19 +152,19 @@ pub fn handle_mouse_event(
                 }
                 if contains(*search_box, column, row) {
                     app.focus_content();
-                    state.last_search_click = None;
+                    clear_click_state(state);
                     return Ok(());
                 }
-                state.last_search_click = None;
+                clear_click_state(state);
             }
             MouseEventKind::ScrollUp if contains(*search_results, column, row) => {
                 app.scroll_search(-1);
-                state.last_search_click = None;
+                clear_click_state(state);
                 return Ok(());
             }
             MouseEventKind::ScrollDown if contains(*search_results, column, row) => {
                 app.scroll_search(1);
-                state.last_search_click = None;
+                clear_click_state(state);
                 return Ok(());
             }
             _ => {}
@@ -177,7 +178,7 @@ pub fn handle_mouse_event(
                 if app.is_home() {
                     handle_row_double_click(app, state, now)?;
                 } else {
-                    state.last_row_click = None;
+                    state.last_table_row_click = None;
                 }
             } else if let Some(index) = ui::table_row_at(layout.content, column, row) {
                 app.focus_content();
@@ -185,13 +186,13 @@ pub fn handle_mouse_event(
                 handle_row_double_click(app, state, now)?;
             } else if contains(layout.content, column, row) {
                 app.focus_content();
-                state.last_row_click = None;
+                clear_row_click_state(state);
             } else {
-                state.last_row_click = None;
+                clear_row_click_state(state);
             }
         }
         MouseEventKind::ScrollUp => {
-            state.last_row_click = None;
+            clear_row_click_state(state);
             if ui::list_row_at(layout.tables, column, row).is_some() {
                 app.scroll_tables(-1)?;
             } else if contains(layout.content, column, row) {
@@ -199,7 +200,7 @@ pub fn handle_mouse_event(
             }
         }
         MouseEventKind::ScrollDown => {
-            state.last_row_click = None;
+            clear_row_click_state(state);
             if ui::list_row_at(layout.tables, column, row).is_some() {
                 app.scroll_tables(1)?;
             } else if contains(layout.content, column, row) {
@@ -232,16 +233,17 @@ fn handle_search_double_click(app: &mut App, state: &mut MouseState, now: Instan
 }
 
 fn handle_row_double_click(app: &mut App, state: &mut MouseState, now: Instant) -> Result<()> {
-    let selected = if app.is_home() {
-        app.selected_recent
+    let (selected, previous_click) = if app.is_home() {
+        (app.selected_recent, &mut state.last_home_click)
     } else {
-        app.selected_row
+        (app.selected_row, &mut state.last_table_row_click)
     };
-    if is_double_click(state.last_row_click, selected, now) {
+
+    if is_double_click(*previous_click, selected, now) {
         app.handle(Action::Confirm)?;
-        state.last_row_click = None;
+        *previous_click = None;
     } else {
-        state.last_row_click = Some((selected, now));
+        *previous_click = Some((selected, now));
     }
     Ok(())
 }
@@ -254,4 +256,14 @@ fn is_double_click(previous: Option<(usize, Instant)>, selected: usize, now: Ins
 
 fn contains(area: ratatui::layout::Rect, column: u16, row: u16) -> bool {
     column >= area.x && column < area.x + area.width && row >= area.y && row < area.y + area.height
+}
+
+fn clear_click_state(state: &mut MouseState) {
+    state.last_search_click = None;
+    clear_row_click_state(state);
+}
+
+fn clear_row_click_state(state: &mut MouseState) {
+    state.last_home_click = None;
+    state.last_table_row_click = None;
 }
