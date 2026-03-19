@@ -21,7 +21,10 @@ fn compact_query_returns_placeholder_for_empty_input() {
 
 #[test]
 fn compact_query_normalizes_multiline_queries() {
-    assert_eq!(compact_query("SELECT\nname\nFROM demo"), "SELECT name FROM demo");
+    assert_eq!(
+        compact_query("SELECT\nname\nFROM demo"),
+        "SELECT name FROM demo"
+    );
 }
 
 #[test]

@@ -200,7 +200,9 @@ fn execute_sql_rejects_empty_and_whitespace_only_queries() {
 
     let db = Database::open(&path).expect("open db");
     for query in ["", "   \n\t  "] {
-        let error = db.execute_sql(query, 50).expect_err("expected empty query failure");
+        let error = db
+            .execute_sql(query, 50)
+            .expect_err("expected empty query failure");
         assert!(error.to_string().contains("query is empty"));
     }
 

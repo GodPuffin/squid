@@ -4,7 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use super::{Rect, header_tab_rects, home_recent_row_at, layout_info, list_scroll_offset, sql_completion_rect};
+use super::{
+    Rect, header_tab_rects, home_recent_row_at, layout_info, list_scroll_offset,
+    sql_completion_rect,
+};
 use crate::app::{App, AppMode, SqlCompletionItem, SqlCompletionState};
 
 #[test]

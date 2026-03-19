@@ -1,5 +1,5 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     RecentStore, normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available,
@@ -144,10 +144,7 @@ fn recent_path_is_available_for_sqlite_file_uris() {
     ));
     std::fs::write(&path, b"sqlite").unwrap();
 
-    let uri = std::path::PathBuf::from(format!(
-        "file:{}?mode=ro",
-        path_to_sqlite_uri_path(&path)
-    ));
+    let uri = std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
     assert!(recent_path_is_available(&uri));
 
     cleanup(&path);
@@ -249,7 +246,10 @@ fn manual_record_logic_normalizes_dedupes_and_trims() {
 
     assert_eq!(entries.len(), RecentStore::MAX_ITEMS);
     assert_eq!(entries.first(), Some(&normalized));
-    assert_eq!(entries.iter().filter(|path| **path == normalized).count(), 1);
+    assert_eq!(
+        entries.iter().filter(|path| **path == normalized).count(),
+        1
+    );
 }
 
 #[test]
@@ -278,7 +278,9 @@ fn recent_path_is_unavailable_for_remote_authority_and_bad_encoding() {
     assert!(!recent_path_is_available(Path::new(
         "file://example.com/shared/app.db?mode=ro"
     )));
-    assert!(!recent_path_is_available(Path::new("file:/tmp/bad%ZZname.db")));
+    assert!(!recent_path_is_available(Path::new(
+        "file:/tmp/bad%ZZname.db"
+    )));
 }
 
 fn unique_test_path(label: &str) -> std::path::PathBuf {
