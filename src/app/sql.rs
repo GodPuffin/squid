@@ -510,12 +510,19 @@ impl App {
         }
 
         match self.db.execute_sql(&query, SQL_RESULT_LIMIT) {
-            Ok(SqlExecutionResult::Rows { columns, rows }) => {
+            Ok(SqlExecutionResult::Rows {
+                columns,
+                rows,
+                is_mutation,
+            }) => {
                 let row_count = rows.len();
                 self.sql.result = SqlResultState::Rows { columns, rows };
                 self.sql.result_scroll = 0;
                 self.sql.status = format!("Returned {row_count} row(s)");
                 self.push_sql_history(query, format!("Rows: {row_count}"));
+                if is_mutation {
+                    self.reload()?;
+                }
             }
             Ok(SqlExecutionResult::Statement {
                 affected_rows,
@@ -755,7 +762,14 @@ fn is_completion_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
     use super::{completion_prefix, line_col_from_index, move_vertical};
+    use crate::app::App;
 
     #[test]
     fn completion_prefix_reads_identifier_prefix() {
@@ -777,5 +791,33 @@ mod tests {
         let query = "SELECT\ncolumn\nx";
         let moved = move_vertical(query, query.len() - 1, -1);
         assert_eq!(line_col_from_index(query, moved), (1, 0));
+    }
+
+    #[test]
+    fn sql_execute_reloads_after_insert_returning() {
+        let path = temp_db_path("insert-returning");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        assert_eq!(app.preview.total_rows, 0);
+
+        app.sql.query = "INSERT INTO demo(name) VALUES ('delta') RETURNING id".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_execute().expect("execute sql");
+
+        assert_eq!(app.preview.total_rows, 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    fn temp_db_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("squid-sql-{label}-{stamp}.sqlite"))
     }
 }

@@ -11,6 +11,7 @@ impl Database {
         }
 
         let mut stmt = self.conn.prepare(sql)?;
+        let is_mutation = !stmt.readonly();
         if stmt.column_count() > 0 {
             let columns = stmt
                 .column_names()
@@ -29,7 +30,11 @@ impl Database {
                 .take(row_limit)
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(SqlExecutionResult::Rows { columns, rows })
+            Ok(SqlExecutionResult::Rows {
+                columns,
+                rows,
+                is_mutation,
+            })
         } else {
             drop(stmt);
             let affected_rows = self.conn.execute(sql, [])?;
@@ -76,12 +81,17 @@ mod tests {
             .expect("select");
 
         match result {
-            SqlExecutionResult::Rows { columns, rows } => {
+            SqlExecutionResult::Rows {
+                columns,
+                rows,
+                is_mutation,
+            } => {
                 assert_eq!(columns, vec!["name"]);
                 assert_eq!(
                     rows,
                     vec![vec!["alpha".to_string()], vec!["beta".to_string()]]
                 );
+                assert!(!is_mutation);
             }
             SqlExecutionResult::Statement { .. } => panic!("expected rows"),
         }
@@ -136,6 +146,35 @@ mod tests {
             .expect_err("expected failure");
 
         assert!(error.to_string().contains("no such column"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn execute_sql_marks_returning_mutations() {
+        let path = temp_db_path("returning");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let db = Database::open(&path).expect("open db");
+        let result = db
+            .execute_sql("INSERT INTO demo(name) VALUES ('delta') RETURNING id", 50)
+            .expect("insert returning");
+
+        match result {
+            SqlExecutionResult::Rows {
+                columns,
+                rows,
+                is_mutation,
+            } => {
+                assert_eq!(columns, vec!["id"]);
+                assert_eq!(rows.len(), 1);
+                assert!(is_mutation);
+            }
+            SqlExecutionResult::Statement { .. } => panic!("expected rows"),
+        }
 
         let _ = fs::remove_file(path);
     }

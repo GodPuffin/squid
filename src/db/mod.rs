@@ -91,6 +91,7 @@ pub enum SqlExecutionResult {
     Rows {
         columns: Vec<String>,
         rows: Vec<Vec<String>>,
+        is_mutation: bool,
     },
     Statement {
         affected_rows: usize,
