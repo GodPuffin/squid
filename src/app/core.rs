@@ -109,7 +109,6 @@ impl App {
             | Action::PageUp
             | Action::PageDown
             | Action::ExecuteSql
-            | Action::OpenCompletion
             | Action::NewLine
             | Action::InputChar(_)
             | Action::Backspace

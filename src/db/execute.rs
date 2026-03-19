@@ -10,7 +10,10 @@ impl Database {
             return Err(anyhow!("query is empty"));
         }
 
-        let mut stmt = self.conn.prepare(sql)?;
+        let mut stmt = self
+            .conn
+            .prepare(sql)
+            .map_err(|err| anyhow!("failed to prepare SQL: {err}"))?;
         let is_mutation = !stmt.readonly();
         if stmt.column_count() > 0 {
             let columns = stmt
@@ -146,6 +149,24 @@ mod tests {
             .expect_err("expected failure");
 
         assert!(error.to_string().contains("no such column"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn execute_sql_rejects_multiple_statements() {
+        let path = temp_db_path("multi");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let db = Database::open(&path).expect("open db");
+        let error = db
+            .execute_sql("SELECT 1; SELECT 2", 50)
+            .expect_err("expected multiple statement failure");
+
+        assert!(error.to_string().to_ascii_lowercase().contains("multiple"));
 
         let _ = fs::remove_file(path);
     }

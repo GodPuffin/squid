@@ -125,7 +125,6 @@ fn sql_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Esc => Action::CloseModal,
         KeyCode::Tab => Action::ToggleFocus,
         KeyCode::F(5) => Action::ExecuteSql,
-        KeyCode::F(2) => Action::OpenCompletion,
         KeyCode::Up => Action::MoveUp,
         KeyCode::Down => Action::MoveDown,
         KeyCode::Left => Action::MoveLeft,

@@ -207,7 +207,6 @@ impl App {
             Action::Delete => self.sql_delete()?,
             Action::NewLine => self.sql_newline()?,
             Action::ExecuteSql => self.sql_execute()?,
-            Action::OpenCompletion => self.sql_refresh_completion()?,
             Action::Confirm => self.sql_confirm()?,
             Action::Clear => self.sql_clear(),
             Action::Reload => self.reload()?,
@@ -625,6 +624,7 @@ impl App {
 
     fn sql_completion_candidates(&self, prefix: &str) -> Result<Vec<SqlCompletionItem>> {
         let prefix_lower = prefix.to_lowercase();
+        let qualifier = completion_qualifier(prefix);
         let mut items = Vec::new();
 
         for keyword in SQL_KEYWORDS {
@@ -650,7 +650,7 @@ impl App {
             for column in self.db.list_columns(&table.name)? {
                 items.push(SqlCompletionItem {
                     label: format!("{}.{}", table.name, column),
-                    insert_text: column,
+                    insert_text: format!("{qualifier}{column}"),
                 });
             }
         }
@@ -756,6 +756,13 @@ fn completion_prefix(value: &str, cursor: usize) -> (usize, String) {
     (start, value[start..cursor].to_string())
 }
 
+fn completion_qualifier(prefix: &str) -> &str {
+    prefix
+        .rfind('.')
+        .map(|index| &prefix[..=index])
+        .unwrap_or("")
+}
+
 fn is_completion_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'
 }
@@ -768,7 +775,7 @@ mod tests {
 
     use rusqlite::Connection;
 
-    use super::{completion_prefix, line_col_from_index, move_vertical};
+    use super::{completion_prefix, completion_qualifier, line_col_from_index, move_vertical};
     use crate::app::App;
 
     #[test]
@@ -791,6 +798,39 @@ mod tests {
         let query = "SELECT\ncolumn\nx";
         let moved = move_vertical(query, query.len() - 1, -1);
         assert_eq!(line_col_from_index(query, moved), (1, 0));
+    }
+
+    #[test]
+    fn completion_qualifier_keeps_table_or_alias_prefix() {
+        assert_eq!(completion_qualifier("orders."), "orders.");
+        assert_eq!(completion_qualifier("o.id"), "o.");
+        assert_eq!(completion_qualifier("id"), "");
+    }
+
+    #[test]
+    fn sql_completion_preserves_qualified_prefix_when_applied() {
+        let path = temp_db_path("qualified-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT orders.".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+        let completion = app.sql.completion.as_mut().expect("completion");
+        completion.selected = completion
+            .items
+            .iter()
+            .position(|item| item.label == "orders.id")
+            .expect("orders.id completion");
+
+        app.sql_apply_completion();
+
+        assert_eq!(app.sql.query, "SELECT orders.id");
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]

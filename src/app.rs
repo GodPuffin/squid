@@ -67,7 +67,6 @@ pub enum Action {
     OpenSearchAll,
     OpenFilters,
     ExecuteSql,
-    OpenCompletion,
     NewLine,
     InputChar(char),
     Backspace,
