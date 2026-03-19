@@ -1,4 +1,5 @@
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
 use super::{
     RecentStore, normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available,
@@ -197,6 +198,89 @@ fn normalize_database_path_preserves_memory_file_uris() {
     assert_eq!(normalize_database_path(path).unwrap(), path);
 }
 
+#[test]
+fn to_items_marks_existing_and_missing_paths() {
+    let existing = unique_test_path("to-items-existing");
+    std::fs::write(&existing, b"sqlite").unwrap();
+    let missing = unique_test_path("to-items-missing");
+
+    let items = RecentStore::to_items(vec![existing.clone(), missing.clone()]);
+    assert_eq!(items[0].path, existing);
+    assert!(items[0].available);
+    assert_eq!(items[1].path, missing);
+    assert!(!items[1].available);
+
+    cleanup(&items[0].path);
+}
+
+#[test]
+fn save_to_path_creates_parent_and_preserves_order() {
+    let root = unique_test_dir("save-order");
+    let storage = root.join("nested").join("recent.txt");
+    let entries = vec![
+        std::path::PathBuf::from("C:\\db1.sqlite"),
+        std::path::PathBuf::from("C:\\db2.sqlite"),
+        std::path::PathBuf::from("C:\\db3.sqlite"),
+    ];
+
+    RecentStore::save_to_path(&storage, &entries).unwrap();
+    let loaded = RecentStore::load_from_path(&storage).unwrap();
+
+    assert_eq!(loaded, entries);
+    cleanup(&root);
+}
+
+#[test]
+fn manual_record_logic_normalizes_dedupes_and_trims() {
+    let mut entries = (0..RecentStore::MAX_ITEMS)
+        .map(|index| std::path::PathBuf::from(format!("C:\\db{index}.sqlite")))
+        .collect::<Vec<_>>();
+    let relative = Path::new("./record-relative-test.sqlite");
+    let normalized = normalize_database_path(relative).unwrap();
+
+    entries.retain(|existing| existing != &normalized);
+    entries.insert(0, normalized.clone());
+    entries.truncate(RecentStore::MAX_ITEMS);
+
+    let alt = normalize_database_path(Path::new("record-relative-test.sqlite")).unwrap();
+    entries.retain(|existing| existing != &alt);
+    entries.insert(0, alt.clone());
+    entries.truncate(RecentStore::MAX_ITEMS);
+
+    assert_eq!(entries.len(), RecentStore::MAX_ITEMS);
+    assert_eq!(entries.first(), Some(&normalized));
+    assert_eq!(entries.iter().filter(|path| **path == normalized).count(), 1);
+}
+
+#[test]
+fn manual_remove_logic_preserves_order_and_is_noop_when_absent() {
+    let first = std::path::PathBuf::from("C:\\db1.sqlite");
+    let second = std::path::PathBuf::from("C:\\db2.sqlite");
+    let third = std::path::PathBuf::from("C:\\db3.sqlite");
+    let mut entries = vec![first.clone(), second.clone(), third.clone()];
+
+    entries.retain(|existing| existing != &second);
+    assert_eq!(entries, vec![first.clone(), third.clone()]);
+
+    let absent = std::path::PathBuf::from("C:\\missing.sqlite");
+    entries.retain(|existing| existing != &absent);
+    assert_eq!(entries, vec![first, third]);
+}
+
+#[test]
+fn normalize_database_path_keeps_absolute_file_uris_unchanged() {
+    let uri = Path::new("file:/tmp/app.db?mode=ro");
+    assert_eq!(normalize_database_path(uri).unwrap(), uri);
+}
+
+#[test]
+fn recent_path_is_unavailable_for_remote_authority_and_bad_encoding() {
+    assert!(!recent_path_is_available(Path::new(
+        "file://example.com/shared/app.db?mode=ro"
+    )));
+    assert!(!recent_path_is_available(Path::new("file:/tmp/bad%ZZname.db")));
+}
+
 fn unique_test_path(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -205,6 +289,15 @@ fn unique_test_path(label: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("squid-{label}-{nanos}.txt"))
 }
 
+fn unique_test_dir(label: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("squid-{label}-{nanos}"))
+}
+
 fn cleanup(path: &std::path::Path) {
     let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_dir_all(path);
 }

@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use super::{completion_prefix, completion_qualifier, line_col_from_index, move_vertical};
+use super::{Action, SqlCompletionItem, SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState, completion_prefix, completion_qualifier, line_col_from_index, move_vertical};
 use crate::app::App;
 
 #[test]
@@ -206,10 +206,219 @@ fn sql_execute_keeps_temp_tables_visible_in_browse() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn sql_focus_cycle_moves_forward_and_back() {
+    let mut app = test_app("focus-cycle");
+    app.mode = crate::app::AppMode::Sql;
+
+    app.handle_sql(Action::ToggleFocus).unwrap();
+    assert_eq!(app.sql.focus, SqlPane::History);
+    app.handle_sql(Action::ToggleFocus).unwrap();
+    assert_eq!(app.sql.focus, SqlPane::Results);
+    app.handle_sql(Action::ToggleFocus).unwrap();
+    assert_eq!(app.sql.focus, SqlPane::Editor);
+
+    app.handle_sql(Action::ReverseFocus).unwrap();
+    assert_eq!(app.sql.focus, SqlPane::Results);
+    app.handle_sql(Action::ReverseFocus).unwrap();
+    assert_eq!(app.sql.focus, SqlPane::History);
+}
+
+#[test]
+fn focus_changes_clear_completion_popup() {
+    let mut app = test_app("focus-clears-completion");
+    app.mode = crate::app::AppMode::Sql;
+    app.sql.completion = Some(sample_completion());
+
+    app.handle_sql(Action::ToggleFocus).unwrap();
+
+    assert_eq!(app.sql.focus, SqlPane::History);
+    assert!(app.sql.completion.is_none());
+}
+
+#[test]
+fn newline_applies_completion_or_inserts_line_break() {
+    let mut app = test_app("newline");
+    app.mode = crate::app::AppMode::Sql;
+    app.sql.query = "SEL".to_string();
+    app.sql.cursor = app.sql.query.len();
+    app.sql.completion = Some(SqlCompletionState {
+        prefix_start: 0,
+        items: vec![SqlCompletionItem {
+            label: "SELECT".to_string(),
+            insert_text: "SELECT".to_string(),
+        }],
+        selected: 0,
+    });
+
+    app.handle_sql(Action::NewLine).unwrap();
+    assert_eq!(app.sql.query, "SELECT");
+    assert_eq!(app.sql.cursor, app.sql.query.len());
+
+    app.handle_sql(Action::NewLine).unwrap();
+    assert_eq!(app.sql.query, "SELECT\n");
+}
+
+#[test]
+fn confirm_loads_selected_history_entry() {
+    let mut app = test_app("confirm-history");
+    app.mode = crate::app::AppMode::Sql;
+    app.sql.focus = SqlPane::History;
+    app.sql.history = vec![
+        SqlHistoryEntry {
+            query: "SELECT 1".to_string(),
+            summary: "Rows: 1".to_string(),
+        },
+        SqlHistoryEntry {
+            query: "SELECT 2".to_string(),
+            summary: "Rows: 1".to_string(),
+        },
+    ];
+    app.sql.selected_history = 1;
+
+    app.handle_sql(Action::Confirm).unwrap();
+
+    assert_eq!(app.sql.query, "SELECT 2");
+    assert_eq!(app.sql.focus, SqlPane::Editor);
+    assert_eq!(app.sql.cursor, app.sql.query.len());
+}
+
+#[test]
+fn clear_only_resets_active_pane_state() {
+    let mut app = test_app("clear-pane");
+    app.mode = crate::app::AppMode::Sql;
+    app.sql.query = "SELECT 1".to_string();
+    app.sql.cursor = app.sql.query.len();
+    app.sql.history = vec![SqlHistoryEntry {
+        query: "SELECT 2".to_string(),
+        summary: "Rows: 1".to_string(),
+    }];
+    app.sql.result = SqlResultState::Message {
+        text: "ok".to_string(),
+        is_error: false,
+    };
+
+    app.sql.focus = SqlPane::Editor;
+    app.handle_sql(Action::Clear).unwrap();
+    assert!(app.sql.query.is_empty());
+    assert_eq!(app.sql.history.len(), 1);
+
+    app.sql.focus = SqlPane::History;
+    app.handle_sql(Action::Clear).unwrap();
+    assert!(app.sql.history.is_empty());
+    assert!(matches!(app.sql.result, SqlResultState::Message { .. }));
+
+    app.sql.focus = SqlPane::Results;
+    app.handle_sql(Action::Clear).unwrap();
+    assert!(matches!(app.sql.result, SqlResultState::Empty));
+}
+
+#[test]
+fn ensure_sql_viewport_clamps_editor_history_and_results() {
+    let mut app = test_app("viewport-clamp");
+    app.sql.query = "one\ntwo\nthree\nfour\nfive".to_string();
+    app.sql.cursor = app.sql.query.len();
+    app.sql.editor_height = 2;
+    app.sql.editor_scroll = 99;
+    app.sql.history = (0..5)
+        .map(|idx| SqlHistoryEntry {
+            query: format!("SELECT {idx}"),
+            summary: "Rows: 1".to_string(),
+        })
+        .collect();
+    app.sql.history_height = 2;
+    app.sql.selected_history = 4;
+    app.sql.history_offset = 99;
+    app.sql.result = SqlResultState::Rows {
+        columns: vec!["name".to_string()],
+        rows: (0..5).map(|idx| vec![idx.to_string()]).collect(),
+    };
+    app.sql.result_height = 2;
+    app.sql.result_scroll = 99;
+
+    app.ensure_sql_viewport();
+
+    assert_eq!(app.sql.editor_scroll, 3);
+    assert_eq!(app.sql.history_offset, 3);
+    assert_eq!(app.sql.result_scroll, 3);
+}
+
+#[test]
+fn selecting_history_or_completion_ignores_out_of_range_indices() {
+    let mut app = test_app("select-range");
+    app.sql.history = vec![SqlHistoryEntry {
+        query: "SELECT 1".to_string(),
+        summary: "Rows: 1".to_string(),
+    }];
+    app.sql.selected_history = 0;
+    app.sql.completion = Some(sample_completion());
+
+    app.sql_select_history_in_view(10);
+    assert_eq!(app.sql.selected_history, 0);
+
+    app.sql_select_completion_in_view(10);
+    assert_eq!(app.sql.completion.as_ref().unwrap().selected, 0);
+}
+
+#[test]
+fn refresh_completion_requires_editor_focus_and_nonempty_prefix() {
+    let mut app = test_app("refresh-completion");
+    app.sql.query = "".to_string();
+    app.sql.cursor = 0;
+    app.sql.completion = Some(sample_completion());
+    app.sql_refresh_completion().unwrap();
+    assert!(app.sql.completion.is_none());
+
+    app.sql.focus = SqlPane::History;
+    app.sql.completion = Some(sample_completion());
+    app.sql.query = "SEL".to_string();
+    app.sql.cursor = app.sql.query.len();
+    app.sql_refresh_completion().unwrap();
+    assert!(app.sql.completion.is_some());
+}
+
+#[test]
+fn public_focus_helpers_update_focus() {
+    let mut app = test_app("focus-helpers");
+    app.sql_focus_results();
+    assert_eq!(app.sql.focus, SqlPane::Results);
+    app.sql_focus_editor();
+    assert_eq!(app.sql.focus, SqlPane::Editor);
+}
+
+fn sample_completion() -> SqlCompletionState {
+    SqlCompletionState {
+        prefix_start: 0,
+        items: vec![
+            SqlCompletionItem {
+                label: "SELECT".to_string(),
+                insert_text: "SELECT".to_string(),
+            },
+            SqlCompletionItem {
+                label: "SET".to_string(),
+                insert_text: "SET".to_string(),
+            },
+        ],
+        selected: 0,
+    }
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
     std::env::temp_dir().join(format!("squid-sql-{label}-{stamp}.sqlite"))
+}
+
+fn test_app(label: &str) -> App {
+    let path = temp_db_path(label);
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let app = App::load(Some(path.clone())).expect("load app");
+    let _ = fs::remove_file(path);
+    app
 }
