@@ -65,6 +65,21 @@ pub fn viewport_sizes(area: Rect) -> ViewportSizes {
 }
 
 pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
+    if app.is_home() {
+        let home = home_layout(area);
+        return LayoutInfo {
+            header: home.header,
+            tables: home.recents,
+            content: home.content,
+            footer: home.footer,
+            search_box: None,
+            search_results: None,
+            detail: None,
+            filter_modal: None,
+            modal: None,
+        };
+    }
+
     let areas = root_layout(area);
     let tables_width = app.table_pane_width();
     let body = body_layout(areas[1], tables_width);
@@ -82,6 +97,38 @@ pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
     }
 }
 
+struct HomeLayout {
+    header: Rect,
+    content: Rect,
+    recents: Rect,
+    footer: Rect,
+}
+
+fn home_layout(area: Rect) -> HomeLayout {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Length(8),
+            Constraint::Length(9),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+    let recents = centered_rect(vertical[2], 34, 100);
+    let content = centered_rect(vertical[3], 60, 100);
+    let footer = centered_rect(vertical[4], 70, 100);
+
+    HomeLayout {
+        header: vertical[1],
+        content,
+        recents,
+        footer,
+    }
+}
+
 pub fn list_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
     if column < area.x + 1 || column >= area.x + area.width.saturating_sub(1) {
         return None;
@@ -90,6 +137,29 @@ pub fn list_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
         return None;
     }
     Some((row - area.y - 1) as usize)
+}
+
+pub fn list_scroll_offset(area: Rect, selected: usize, item_count: usize) -> usize {
+    let visible_rows = area.height.saturating_sub(2) as usize;
+    if visible_rows == 0 || item_count <= visible_rows {
+        return 0;
+    }
+
+    selected
+        .saturating_sub(visible_rows.saturating_sub(1))
+        .min(item_count.saturating_sub(visible_rows))
+}
+
+pub fn home_recent_row_at(
+    area: Rect,
+    column: u16,
+    row: u16,
+    selected: usize,
+    item_count: usize,
+) -> Option<usize> {
+    let relative_index = list_row_at(area, column, row)?;
+    let absolute_index = list_scroll_offset(area, selected, item_count) + relative_index;
+    (absolute_index < item_count).then_some(absolute_index)
 }
 
 pub fn table_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
@@ -246,4 +316,27 @@ pub fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rec
         ])
         .flex(Flex::Center)
         .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Rect, home_recent_row_at, list_scroll_offset};
+
+    #[test]
+    fn list_scroll_offset_keeps_selected_row_visible() {
+        let area = Rect::new(0, 0, 20, 9);
+
+        assert_eq!(list_scroll_offset(area, 0, 12), 0);
+        assert_eq!(list_scroll_offset(area, 6, 12), 0);
+        assert_eq!(list_scroll_offset(area, 7, 12), 1);
+        assert_eq!(list_scroll_offset(area, 11, 12), 5);
+    }
+
+    #[test]
+    fn home_recent_row_at_applies_scroll_offset() {
+        let area = Rect::new(0, 0, 20, 9);
+
+        assert_eq!(home_recent_row_at(area, 1, 1, 8, 12), Some(2));
+        assert_eq!(home_recent_row_at(area, 1, 7, 8, 12), Some(8));
+    }
 }

@@ -111,7 +111,7 @@ impl App {
         let results = match scope {
             SearchScope::CurrentTable => {
                 if let Some(table_name) = current_table {
-                    self.db.search_table(
+                    self.db_ref()?.search_table(
                         &table_name,
                         &visible_columns,
                         &filter_clauses,
@@ -122,7 +122,7 @@ impl App {
                     Vec::new()
                 }
             }
-            SearchScope::AllTables => self.db.search_tables(&self.tables, &query, 300)?,
+            SearchScope::AllTables => self.db_ref()?.search_tables(&self.tables, &query, 300)?,
         };
 
         if let Some(search) = &mut self.search {
@@ -210,7 +210,7 @@ impl App {
             return Ok(());
         }
 
-        if let Some(offset) = self.db.locate_row_offset(
+        if let Some(offset) = self.db_ref()?.locate_row_offset(
             &hit.table_name,
             rowid,
             &self.current_sort_clauses(),
