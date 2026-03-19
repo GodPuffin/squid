@@ -77,7 +77,6 @@ impl RecentStore {
 
         Ok(contents
             .lines()
-            .map(str::trim)
             .filter(|line| !line.is_empty())
             .map(PathBuf::from)
             .collect())
@@ -108,7 +107,9 @@ impl RecentStore {
 }
 
 pub(super) fn normalize_database_path(path: &Path) -> Result<PathBuf> {
-    if preserves_sqlite_filename(path) || path.is_absolute() {
+    if let Some(uri_path) = normalize_sqlite_uri_path(path)? {
+        Ok(uri_path)
+    } else if preserves_sqlite_special_name(path) || path.is_absolute() {
         Ok(path.to_path_buf())
     } else {
         Ok(env::current_dir()
@@ -117,11 +118,53 @@ pub(super) fn normalize_database_path(path: &Path) -> Result<PathBuf> {
     }
 }
 
-fn preserves_sqlite_filename(path: &Path) -> bool {
+fn normalize_sqlite_uri_path(path: &Path) -> Result<Option<PathBuf>> {
+    let Some(raw) = path.to_str() else {
+        return Ok(None);
+    };
+    if !raw.starts_with("file:") {
+        return Ok(None);
+    }
+
+    let (filename, suffix) = split_sqlite_uri(raw);
+    let uri_path = &filename["file:".len()..];
+    if uri_path.is_empty()
+        || uri_path.starts_with('/')
+        || uri_path.starts_with('\\')
+        || uri_path.starts_with("//")
+        || Path::new(uri_path).is_absolute()
+    {
+        return Ok(Some(path.to_path_buf()));
+    }
+
+    let absolute = env::current_dir()
+        .context("failed to resolve current directory")?
+        .join(uri_path);
+    Ok(Some(PathBuf::from(format!(
+        "file:{}{}",
+        path_to_sqlite_uri_path(&absolute),
+        suffix
+    ))))
+}
+
+fn split_sqlite_uri(raw: &str) -> (&str, &str) {
+    let suffix_start = raw.find(['?', '#']).unwrap_or(raw.len());
+    (&raw[..suffix_start], &raw[suffix_start..])
+}
+
+fn path_to_sqlite_uri_path(path: &Path) -> String {
+    let mut normalized = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) && normalized.as_bytes().get(1) == Some(&b':') {
+        normalized.insert(0, '/');
+    }
+    normalized
+}
+
+fn preserves_sqlite_special_name(path: &Path) -> bool {
     match path.to_str() {
         Some(":memory:") => true,
-        Some(filename) => filename.starts_with("file:"),
         None => false,
+        Some(_) => false,
     }
 }
 
@@ -129,7 +172,7 @@ fn preserves_sqlite_filename(path: &Path) -> bool {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{RecentStore, normalize_database_path};
+    use super::{RecentStore, normalize_database_path, path_to_sqlite_uri_path};
 
     #[test]
     fn load_from_path_ignores_blank_lines() {
@@ -139,6 +182,23 @@ mod tests {
         let paths = RecentStore::load_from_path(&path).unwrap();
 
         assert_eq!(paths.len(), 2);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn load_from_path_preserves_surrounding_whitespace() {
+        let path = unique_test_path("load-whitespace");
+        std::fs::write(&path, " report.db\nreport.db \n").unwrap();
+
+        let paths = RecentStore::load_from_path(&path).unwrap();
+
+        assert_eq!(
+            paths,
+            vec![
+                std::path::PathBuf::from(" report.db"),
+                std::path::PathBuf::from("report.db "),
+            ]
+        );
         cleanup(&path);
     }
 
@@ -192,6 +252,20 @@ mod tests {
         let path = std::path::Path::new("file:/tmp/app.db?mode=ro");
 
         assert_eq!(normalize_database_path(path).unwrap(), path);
+    }
+
+    #[test]
+    fn normalize_database_path_absolutizes_relative_sqlite_uri_filenames() {
+        let path = std::path::Path::new("file:./fixtures/app.db?mode=ro");
+        let expected = std::env::current_dir().unwrap().join("./fixtures/app.db");
+
+        assert_eq!(
+            normalize_database_path(path).unwrap(),
+            std::path::PathBuf::from(format!(
+                "file:{}?mode=ro",
+                path_to_sqlite_uri_path(&expected)
+            ))
+        );
     }
 
     #[test]
