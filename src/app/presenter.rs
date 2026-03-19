@@ -6,6 +6,10 @@ use super::{App, FilterPane, ModalPane, SearchScope};
 
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
+        if self.is_home() {
+            return self.home_screen_lines();
+        }
+
         let Some(details) = &self.details else {
             return vec!["No schema details available".to_string()];
         };
@@ -41,7 +45,15 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
-        if self.detail.is_some() {
+        if self.is_home() {
+            if self.recent_items.is_empty() {
+                "Run `squid path\\to\\database.sqlite` to open a database  r reload recents  q quit"
+                    .to_string()
+            } else {
+                "Up/Down move  Enter open recent database  Delete remove recent  r reload  q quit"
+                    .to_string()
+            }
+        } else if self.detail.is_some() {
             "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
         } else if self.filter_modal.is_some() {
             "Esc close  q close outside value input  Left/Right switch pane  Up/Down move  Type value  Enter apply  Delete remove  Space cycle operator".to_string()
@@ -66,6 +78,10 @@ impl App {
     }
 
     pub fn content_title(&self) -> String {
+        if self.is_home() {
+            return "Welcome".to_string();
+        }
+
         let table = self.selected_table_name().unwrap_or("Rows");
         let hidden = self.hidden_column_count();
         let filters = self.filter_summary();
@@ -260,6 +276,48 @@ impl App {
                 }
             })
             .collect()
+    }
+
+    pub fn home_status_line(&self) -> Option<String> {
+        if !self.is_home() {
+            return None;
+        }
+
+        if let Some(status) = &self.status_message {
+            Some(status.clone())
+        } else {
+            self.selected_recent_item().map(|item| {
+                if item.available {
+                    format!("Selected: {}", item.path.display())
+                } else {
+                    format!("Missing: {}", item.path.display())
+                }
+            })
+        }
+    }
+
+    fn home_screen_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            "Open a recent SQLite database or launch squid with a path.".to_string(),
+            String::new(),
+            "Examples".to_string(),
+            "  squid".to_string(),
+            "  squid path\\to\\database.sqlite".to_string(),
+            "  squid --help".to_string(),
+            "  squid --version".to_string(),
+        ];
+
+        if self.recent_items.is_empty() {
+            lines.push(String::new());
+            lines.push("No recent databases yet.".to_string());
+        }
+
+        if let Some(status) = self.home_status_line() {
+            lines.push(String::new());
+            lines.push(status);
+        }
+
+        lines
     }
 }
 

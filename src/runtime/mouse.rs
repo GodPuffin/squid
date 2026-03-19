@@ -174,7 +174,11 @@ pub fn handle_mouse_event(
         MouseEventKind::Down(MouseButton::Left) => {
             if let Some(index) = ui::list_row_at(layout.tables, column, row) {
                 app.select_table_by_index(index)?;
-                state.last_row_click = None;
+                if app.is_home() {
+                    handle_row_double_click(app, state, now)?;
+                } else {
+                    state.last_row_click = None;
+                }
             } else if let Some(index) = ui::table_row_at(layout.content, column, row) {
                 app.focus_content();
                 app.select_row_in_view(index)?;
@@ -228,7 +232,11 @@ fn handle_search_double_click(app: &mut App, state: &mut MouseState, now: Instan
 }
 
 fn handle_row_double_click(app: &mut App, state: &mut MouseState, now: Instant) -> Result<()> {
-    let selected = app.selected_row;
+    let selected = if app.is_home() {
+        app.selected_recent
+    } else {
+        app.selected_row
+    };
     if is_double_click(state.last_row_click, selected, now) {
         app.handle(Action::Confirm)?;
         state.last_row_click = None;

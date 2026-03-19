@@ -7,17 +7,38 @@ use crate::app::{App, PaneFocus};
 use super::widgets::panel_block;
 
 pub fn render_tables(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let items: Vec<ListItem<'_>> = if app.tables.is_empty() {
-        vec![ListItem::new("No tables")]
+    let (title, items): (&str, Vec<ListItem<'_>>) = if app.is_home() {
+        if app.recent_items.is_empty() {
+            ("Recent Files", vec![ListItem::new("No recent files")])
+        } else {
+            (
+                "Recent Files",
+                app.recent_items
+                    .iter()
+                    .map(|item| {
+                        let mut label = item.path.display().to_string();
+                        if !item.available {
+                            label.push_str(" [missing]");
+                        }
+                        ListItem::new(label)
+                    })
+                    .collect(),
+            )
+        }
+    } else if app.tables.is_empty() {
+        ("Tables", vec![ListItem::new("No tables")])
     } else {
-        app.tables
-            .iter()
-            .map(|table| ListItem::new(table.name.clone()))
-            .collect()
+        (
+            "Tables",
+            app.tables
+                .iter()
+                .map(|table| ListItem::new(table.name.clone()))
+                .collect(),
+        )
     };
 
     let list = List::new(items)
-        .block(panel_block("Tables", app.focus == PaneFocus::Tables))
+        .block(panel_block(title, app.focus == PaneFocus::Tables))
         .highlight_style(
             Style::default()
                 .fg(Color::Black)
@@ -27,7 +48,11 @@ pub fn render_tables(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) 
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();
-    if !app.tables.is_empty() {
+    if app.is_home() {
+        if !app.recent_items.is_empty() {
+            state.select(Some(app.selected_recent));
+        }
+    } else if !app.tables.is_empty() {
         state.select(Some(app.selected_table));
     }
 

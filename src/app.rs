@@ -1,6 +1,7 @@
 mod core;
 mod detail;
 mod filter;
+mod home;
 mod modal;
 mod navigation;
 mod presenter;
@@ -12,6 +13,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::db::{Database, RowPreview, TableDetails, TableSummary};
+pub use home::{RecentItem, RecentStore};
 
 pub use state::{
     DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState, FilterPane,
@@ -34,6 +36,12 @@ pub enum PaneFocus {
 pub enum ContentView {
     Rows,
     Schema,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppMode {
+    Home,
+    Database,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,8 +70,9 @@ pub enum Action {
 }
 
 pub struct App {
-    path: PathBuf,
-    pub db: Database,
+    mode: AppMode,
+    path: Option<PathBuf>,
+    pub db: Option<Database>,
     pub tables: Vec<TableSummary>,
     pub selected_table: usize,
     pub focus: PaneFocus,
@@ -79,5 +88,8 @@ pub struct App {
     pub filter_modal: Option<FilterModalState>,
     pub modal: Option<ModalState>,
     pub search: Option<SearchState>,
+    pub recent_items: Vec<RecentItem>,
+    pub selected_recent: usize,
+    pub status_message: Option<String>,
     configs: HashMap<String, TableConfig>,
 }

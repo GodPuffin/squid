@@ -11,10 +11,23 @@ use super::search::render_search;
 use super::widgets::panel_block;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    if app.is_home() {
+        render_home(frame, app, layout.content);
+        return;
+    }
+
     match app.content_view {
         ContentView::Rows => render_rows(frame, app, layout),
         ContentView::Schema => render_schema(frame, app, layout.content),
     }
+}
+
+fn render_home(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let lines: Vec<Line<'_>> = app.schema_lines().into_iter().map(Line::from).collect();
+    let home = Paragraph::new(lines)
+        .block(panel_block("Welcome", app.focus == PaneFocus::Content))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(home, area);
 }
 
 fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
