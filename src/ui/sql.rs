@@ -268,11 +268,30 @@ fn is_sql_keyword(token: &str) -> bool {
 fn compact_query(query: &str) -> String {
     let single_line = query.replace('\n', " ");
     let compact = single_line.trim();
-    if compact.len() > 26 {
-        format!("{}...", &compact[..26])
+    let truncated = compact.chars().take(26).collect::<String>();
+    if compact.chars().count() > 26 {
+        format!("{truncated}...")
     } else if compact.is_empty() {
         "<empty>".to_string()
     } else {
         compact.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compact_query;
+
+    #[test]
+    fn compact_query_truncates_unicode_without_panicking() {
+        let query = "SELECT '😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀'";
+        let compact = compact_query(query);
+
+        assert_eq!(compact, "SELECT '😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀...");
+    }
+
+    #[test]
+    fn compact_query_keeps_short_queries_unchanged() {
+        assert_eq!(compact_query("SELECT name"), "SELECT name");
     }
 }

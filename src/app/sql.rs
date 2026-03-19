@@ -663,11 +663,16 @@ impl App {
         } else {
             Ok(items
                 .into_iter()
-                .filter(|item| item.label.to_lowercase().starts_with(&prefix_lower))
+                .filter(|item| completion_matches(&prefix_lower, item))
                 .take(6)
                 .collect())
         }
     }
+}
+
+fn completion_matches(prefix_lower: &str, item: &SqlCompletionItem) -> bool {
+    item.label.to_lowercase().starts_with(prefix_lower)
+        || item.insert_text.to_lowercase().starts_with(prefix_lower)
 }
 
 fn previous_boundary(value: &str, index: usize) -> usize {
@@ -829,6 +834,63 @@ mod tests {
         app.sql_apply_completion();
 
         assert_eq!(app.sql.query, "SELECT orders.id");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_completion_matches_alias_qualified_prefixes() {
+        let path = temp_db_path("alias-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT o.".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+
+        let items = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("completion")
+            .items
+            .iter()
+            .map(|item| item.insert_text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(items.contains(&"o.id"));
+        assert!(items.contains(&"o.name"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_completion_matches_unqualified_column_prefixes() {
+        let path = temp_db_path("column-prefix-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT na".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+
+        let items = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("completion")
+            .items
+            .iter()
+            .map(|item| item.insert_text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(items.contains(&"name"));
 
         let _ = fs::remove_file(path);
     }
