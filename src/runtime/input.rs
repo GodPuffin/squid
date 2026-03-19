@@ -153,7 +153,9 @@ mod tests {
     use rusqlite::Connection;
 
     use super::action_for_key;
-    use crate::app::{Action, App, AppMode, FilterModalState, FilterPane, SearchScope, SearchState};
+    use crate::app::{
+        Action, App, AppMode, FilterModalState, FilterPane, SearchScope, SearchState,
+    };
 
     #[test]
     fn root_digit_shortcuts_still_switch_modes() {
