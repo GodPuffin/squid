@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -71,8 +72,14 @@ impl RecentStore {
     }
 
     fn load_from_path(path: &Path) -> Result<Vec<PathBuf>> {
-        let Ok(contents) = fs::read_to_string(path) else {
-            return Ok(Vec::new());
+        let contents = match fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to read recent database list {}", path.display())
+                });
+            }
         };
 
         Ok(contents
@@ -186,17 +193,32 @@ fn sqlite_uri_local_path(path: &Path) -> Option<PathBuf> {
     }
 
     let (filename, _) = split_sqlite_uri(raw);
-    let uri_path = &filename["file:".len()..];
+    let uri_path = sqlite_uri_local_path_part(&filename["file:".len()..])?;
     if uri_path.is_empty() || uri_path.starts_with(':') {
         return None;
     }
-    if uri_path.starts_with("//") {
-        return None;
-    }
 
+    let decoded_path = percent_decode(&uri_path)?;
     Some(normalize_local_path(&sqlite_uri_path_to_local_path(
-        uri_path,
+        &decoded_path,
     )))
+}
+
+fn sqlite_uri_local_path_part(uri_path: &str) -> Option<String> {
+    if uri_path.starts_with("//") {
+        let authority_and_path = &uri_path["//".len()..];
+        let (authority, path) = match authority_and_path.split_once('/') {
+            Some((authority, path)) => (authority, format!("/{path}")),
+            None => (authority_and_path, "/".to_string()),
+        };
+        if authority.is_empty() || authority.eq_ignore_ascii_case("localhost") {
+            Some(path)
+        } else {
+            None
+        }
+    } else {
+        Some(uri_path.to_string())
+    }
 }
 
 fn normalize_local_path(path: &Path) -> PathBuf {
@@ -231,6 +253,38 @@ fn sqlite_uri_path_to_local_path(uri_path: &str) -> PathBuf {
     }
 }
 
+fn percent_decode(value: &str) -> Option<String> {
+    let mut decoded = Vec::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return None;
+            }
+            let high = decode_hex(bytes[index + 1])?;
+            let low = decode_hex(bytes[index + 2])?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+
+    String::from_utf8(decoded).ok()
+}
+
+fn decode_hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn preserves_sqlite_special_name(path: &Path) -> bool {
     match path.to_str() {
         Some(":memory:") => true,
@@ -256,6 +310,21 @@ mod tests {
 
         assert_eq!(paths.len(), 2);
         cleanup(&path);
+    }
+
+    #[test]
+    fn load_from_path_reports_non_not_found_errors() {
+        let path = unique_test_path("load-dir");
+        std::fs::create_dir_all(&path).unwrap();
+
+        let error = RecentStore::load_from_path(&path).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to read recent database list")
+        );
+        let _ = std::fs::remove_dir(&path);
     }
 
     #[test]
@@ -373,6 +442,44 @@ mod tests {
 
         let uri =
             std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
+        assert!(recent_path_is_available(&uri));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn recent_path_is_available_for_localhost_file_uris() {
+        let path = std::env::temp_dir().join(format!(
+            "squid-localhost-{}.db",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"sqlite").unwrap();
+
+        let uri = std::path::PathBuf::from(format!(
+            "file://localhost{}?mode=ro",
+            path_to_sqlite_uri_path(&path)
+        ));
+        assert!(recent_path_is_available(&uri));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn recent_path_is_available_for_percent_encoded_file_uris() {
+        let path = std::env::temp_dir().join(format!(
+            "squid my db {}.sqlite",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"sqlite").unwrap();
+
+        let encoded_path = path_to_sqlite_uri_path(&path).replace(' ', "%20");
+        let uri = std::path::PathBuf::from(format!("file:{encoded_path}?mode=ro"));
         assert!(recent_path_is_available(&uri));
 
         cleanup(&path);

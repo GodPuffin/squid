@@ -173,7 +173,19 @@ pub fn handle_mouse_event(
 
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            if let Some(index) = ui::list_row_at(layout.tables, column, row) {
+            let table_index = if app.is_home() {
+                ui::home_recent_row_at(
+                    layout.tables,
+                    column,
+                    row,
+                    app.selected_recent,
+                    app.recent_items.len(),
+                )
+            } else {
+                ui::list_row_at(layout.tables, column, row)
+            };
+
+            if let Some(index) = table_index {
                 app.select_table_by_index(index)?;
                 if app.is_home() {
                     handle_row_double_click(app, state, now)?;

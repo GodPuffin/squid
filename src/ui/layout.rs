@@ -139,6 +139,29 @@ pub fn list_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
     Some((row - area.y - 1) as usize)
 }
 
+pub fn list_scroll_offset(area: Rect, selected: usize, item_count: usize) -> usize {
+    let visible_rows = area.height.saturating_sub(2) as usize;
+    if visible_rows == 0 || item_count <= visible_rows {
+        return 0;
+    }
+
+    selected
+        .saturating_sub(visible_rows.saturating_sub(1))
+        .min(item_count.saturating_sub(visible_rows))
+}
+
+pub fn home_recent_row_at(
+    area: Rect,
+    column: u16,
+    row: u16,
+    selected: usize,
+    item_count: usize,
+) -> Option<usize> {
+    let relative_index = list_row_at(area, column, row)?;
+    let absolute_index = list_scroll_offset(area, selected, item_count) + relative_index;
+    (absolute_index < item_count).then_some(absolute_index)
+}
+
 pub fn table_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
     if column < area.x + 1 || column >= area.x + area.width.saturating_sub(1) {
         return None;
@@ -293,4 +316,27 @@ pub fn centered_rect(area: Rect, width_percent: u16, height_percent: u16) -> Rec
         ])
         .flex(Flex::Center)
         .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Rect, home_recent_row_at, list_scroll_offset};
+
+    #[test]
+    fn list_scroll_offset_keeps_selected_row_visible() {
+        let area = Rect::new(0, 0, 20, 9);
+
+        assert_eq!(list_scroll_offset(area, 0, 12), 0);
+        assert_eq!(list_scroll_offset(area, 6, 12), 0);
+        assert_eq!(list_scroll_offset(area, 7, 12), 1);
+        assert_eq!(list_scroll_offset(area, 11, 12), 5);
+    }
+
+    #[test]
+    fn home_recent_row_at_applies_scroll_offset() {
+        let area = Rect::new(0, 0, 20, 9);
+
+        assert_eq!(home_recent_row_at(area, 1, 1, 8, 12), Some(2));
+        assert_eq!(home_recent_row_at(area, 1, 7, 8, 12), Some(8));
+    }
 }

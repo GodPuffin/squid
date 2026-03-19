@@ -49,7 +49,11 @@ fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("  ");
-    let mut state = ListState::default();
+    let mut state = ListState::default().with_offset(super::list_scroll_offset(
+        layout.tables,
+        app.selected_recent,
+        app.recent_items.len(),
+    ));
     if !app.recent_items.is_empty() {
         state.select(Some(app.selected_recent));
     }
