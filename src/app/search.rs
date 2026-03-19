@@ -47,17 +47,26 @@ impl App {
             Action::OpenSearchAll => self.open_search(SearchScope::AllTables)?,
             Action::Quit => {}
             Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
             | Action::ToggleFocus
+            | Action::ReverseFocus
             | Action::ToggleView
             | Action::MoveLeft
             | Action::MoveRight
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
             | Action::OpenConfig
             | Action::ToggleItem
             | Action::Delete
             | Action::Clear
             | Action::FollowLink
             | Action::OpenFilters
-            | Action::Reload => {}
+            | Action::Reload
+            | Action::ExecuteSql
+            | Action::NewLine => {}
         }
 
         Ok(())

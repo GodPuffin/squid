@@ -1,3 +1,4 @@
+mod execute;
 mod query;
 mod schema;
 mod search;
@@ -6,7 +7,7 @@ mod value;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 #[derive(Debug, Clone)]
 pub struct TableSummary {
@@ -85,6 +86,19 @@ pub struct RowRecord {
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 
+#[derive(Debug, Clone)]
+pub enum SqlExecutionResult {
+    Rows {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+        is_mutation: bool,
+    },
+    Statement {
+        affected_rows: usize,
+        description: String,
+    },
+}
+
 impl RowPreview {
     pub fn empty() -> Self {
         Self {
@@ -101,11 +115,19 @@ pub struct Database {
 
 impl Database {
     pub fn open(path: &Path) -> Result<Self> {
-        let conn = Connection::open_with_flags(
-            path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-        )
-        .with_context(|| format!("failed to open database {}", path.display()))?;
+        let read_write_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI;
+        let conn = match Connection::open_with_flags(path, read_write_flags) {
+            Ok(conn) => conn,
+            Err(read_write_err) => {
+                let read_only_flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+                Connection::open_with_flags(path, read_only_flags).with_context(|| {
+                    format!(
+                        "failed to open database {} for read-write or read-only access (read-write attempt failed: {read_write_err})",
+                        path.display()
+                    )
+                })?
+            }
+        };
 
         Ok(Self { conn })
     }
@@ -113,8 +135,15 @@ impl Database {
     pub fn list_tables(&self) -> Result<Vec<TableSummary>> {
         let mut stmt = self.conn.prepare(
             "SELECT name
-             FROM sqlite_master
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             FROM (
+                 SELECT name
+                 FROM sqlite_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                 UNION
+                 SELECT name
+                 FROM sqlite_temp_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             )
              ORDER BY name",
         )?;
 

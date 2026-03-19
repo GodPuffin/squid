@@ -2,7 +2,7 @@ use sqlformat::{FormatOptions, QueryParams};
 
 use crate::db::FilterMode;
 
-use super::{App, FilterPane, ModalPane, SearchScope};
+use super::{App, AppMode, FilterPane, ModalPane, SearchScope};
 
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
@@ -41,6 +41,9 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
+        if self.mode == AppMode::Sql {
+            return "1 browse  2 sql  Tab cycle panes  F5 run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q quit outside editor".to_string();
+        }
         if self.detail.is_some() {
             "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
         } else if self.filter_modal.is_some() {
