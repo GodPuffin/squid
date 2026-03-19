@@ -3,6 +3,7 @@ mod content;
 mod layout;
 mod modals;
 mod search;
+mod sql;
 mod tables;
 mod widgets;
 
@@ -23,9 +24,13 @@ pub fn render(frame: &mut Frame, app: &App) {
         return;
     }
 
-    chrome::render_header(frame, app, layout.header);
-    tables::render_tables(frame, app, layout.tables);
-    content::render(frame, app, &layout);
+    chrome::render_header(frame, app, &layout);
+    if app.mode == crate::app::AppMode::Browse {
+        tables::render_tables(frame, app, layout.tables);
+        content::render(frame, app, &layout);
+    } else {
+        sql::render(frame, app, &layout);
+    }
     chrome::render_footer(frame, app, layout.footer);
     modals::render(frame, app, &layout);
 }

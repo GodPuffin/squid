@@ -23,6 +23,72 @@ pub fn handle_mouse_event(
     let column = mouse.column;
     let row = mouse.row;
 
+    if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        if contains(layout.header_tabs.browse, column, row) {
+            app.handle(Action::SwitchToBrowse)?;
+            return Ok(());
+        }
+        if contains(layout.header_tabs.sql, column, row) {
+            app.handle(Action::SwitchToSql)?;
+            return Ok(());
+        }
+    }
+
+    if let Some(sql) = &layout.sql {
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(completion) = sql.completion
+                    && let Some(index) = ui::list_row_at(completion, column, row)
+                {
+                    app.sql_select_completion_in_view(index);
+                    app.sql_apply_selected_completion();
+                } else if contains(sql.editor, column, row) {
+                    let line_in_view = row.saturating_sub(sql.editor.y + 1) as usize;
+                    let col_in_view = column.saturating_sub(sql.editor.x) as usize;
+                    app.sql_set_cursor_from_view(line_in_view, col_in_view);
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if let Some(completion) = sql.completion
+                    && contains(completion, column, row)
+                {
+                    app.handle(Action::MoveUp)?;
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                    app.handle(Action::MoveUp)?;
+                } else if contains(sql.editor, column, row) {
+                    app.sql_focus_editor();
+                    app.handle(Action::MoveUp)?;
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                    app.handle(Action::MoveUp)?;
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if let Some(completion) = sql.completion
+                    && contains(completion, column, row)
+                {
+                    app.handle(Action::MoveDown)?;
+                } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_select_history_in_view(index);
+                    app.handle(Action::MoveDown)?;
+                } else if contains(sql.editor, column, row) {
+                    app.sql_focus_editor();
+                    app.handle(Action::MoveDown)?;
+                } else if contains(sql.results, column, row) {
+                    app.sql_focus_results();
+                    app.handle(Action::MoveDown)?;
+                }
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
     if let Some(modal) = &layout.modal {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {

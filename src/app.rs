@@ -6,6 +6,7 @@ mod modal;
 mod navigation;
 mod presenter;
 mod search;
+mod sql;
 mod state;
 mod table_config;
 
@@ -16,8 +17,9 @@ use crate::db::{Database, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
 pub use state::{
-    DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState, FilterPane,
-    ModalPane, ModalState, SearchScope, SearchState,
+    AppMode, DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState,
+    FilterPane, ModalPane, ModalState, SearchScope, SearchState, SqlCompletionItem,
+    SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState, SqlState,
 };
 pub use table_config::{FilterRule, SortRule, TableConfig};
 
@@ -39,21 +41,22 @@ pub enum ContentView {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AppMode {
-    Home,
-    Database,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     None,
     Quit,
+    SwitchToBrowse,
+    SwitchToSql,
     ToggleFocus,
+    ReverseFocus,
     ToggleView,
     MoveUp,
     MoveDown,
     MoveLeft,
     MoveRight,
+    MoveHome,
+    MoveEnd,
+    PageUp,
+    PageDown,
     OpenConfig,
     CloseModal,
     ToggleItem,
@@ -65,12 +68,14 @@ pub enum Action {
     OpenSearchCurrent,
     OpenSearchAll,
     OpenFilters,
+    ExecuteSql,
+    NewLine,
     InputChar(char),
     Backspace,
 }
 
 pub struct App {
-    mode: AppMode,
+    pub mode: AppMode,
     path: Option<PathBuf>,
     pub db: Option<Database>,
     pub tables: Vec<TableSummary>,
@@ -91,5 +96,6 @@ pub struct App {
     pub recent_items: Vec<RecentItem>,
     pub selected_recent: usize,
     pub status_message: Option<String>,
+    pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
 }

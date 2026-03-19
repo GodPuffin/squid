@@ -7,6 +7,7 @@ use crate::db::{Database, RowPreview};
 use super::{
     Action, App, AppMode, ContentView, PaneFocus, RecentStore, home::normalize_database_path,
 };
+use super::{SqlPane, SqlResultState, SqlState};
 
 impl App {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
@@ -37,6 +38,22 @@ impl App {
             recent_items,
             selected_recent: 0,
             status_message,
+            sql: SqlState {
+                query: String::new(),
+                cursor: 0,
+                editor_scroll: 0,
+                editor_height: 8,
+                focus: SqlPane::Editor,
+                history: Vec::new(),
+                history_offset: 0,
+                history_height: 8,
+                selected_history: 0,
+                result: SqlResultState::Empty,
+                result_scroll: 0,
+                result_height: 8,
+                completion: None,
+                status: "SQL mode ready".to_string(),
+            },
             configs: std::collections::HashMap::new(),
         };
 
@@ -52,6 +69,23 @@ impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
         if self.is_home() {
             return self.handle_home(action);
+        }
+
+        if matches!(action, Action::SwitchToBrowse) {
+            self.mode = AppMode::Browse;
+            return Ok(());
+        }
+        if matches!(action, Action::SwitchToSql) {
+            self.mode = AppMode::Sql;
+            self.detail = None;
+            self.modal = None;
+            self.filter_modal = None;
+            self.search = None;
+            return Ok(());
+        }
+
+        if self.mode == AppMode::Sql {
+            return self.handle_sql(action);
         }
 
         if self.detail.is_some() {
@@ -73,7 +107,7 @@ impl App {
         match action {
             Action::None => {}
             Action::Quit => {}
-            Action::ToggleFocus => self.toggle_focus(),
+            Action::ToggleFocus | Action::ReverseFocus => self.toggle_focus(),
             Action::ToggleView => self.toggle_view(),
             Action::MoveUp => self.move_up()?,
             Action::MoveDown => self.move_down()?,
@@ -89,8 +123,16 @@ impl App {
             | Action::FollowLink
             | Action::Delete
             | Action::Clear
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
+            | Action::ExecuteSql
+            | Action::NewLine
             | Action::InputChar(_)
-            | Action::Backspace => {}
+            | Action::Backspace
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql => {}
         }
 
         Ok(())
@@ -134,6 +176,8 @@ impl App {
             search.result_limit = row_limit.saturating_sub(3).max(1);
             self.clamp_search_viewport();
         }
+
+        self.ensure_sql_viewport();
 
         if needs_refresh {
             self.refresh_preview()?;
@@ -260,9 +304,12 @@ impl App {
         let Some(path) = self.path.clone() else {
             return Ok(());
         };
-        let db = Database::open(&path)?;
-        self.tables = db.list_tables()?;
-        self.db = Some(db);
+        self.db = Some(Database::open(&path)?);
+        self.refresh_loaded_db_state()
+    }
+
+    pub(super) fn refresh_loaded_db_state(&mut self) -> Result<()> {
+        self.tables = self.db_ref()?.list_tables()?;
         if self.selected_table >= self.tables.len() {
             self.selected_table = self.tables.len().saturating_sub(1);
         }
@@ -425,7 +472,7 @@ impl App {
         let db = Database::open(&absolute_path)?;
         let tables = db.list_tables()?;
 
-        self.mode = AppMode::Database;
+        self.mode = AppMode::Browse;
         self.path = Some(absolute_path.clone());
         self.db = Some(db);
         self.tables = tables;
@@ -473,7 +520,14 @@ impl App {
                 self.reload()?;
             }
             Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
+            | Action::ReverseFocus
             | Action::ToggleView
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
             | Action::OpenConfig
             | Action::CloseModal
             | Action::ToggleItem
@@ -481,6 +535,8 @@ impl App {
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::OpenFilters
+            | Action::ExecuteSql
+            | Action::NewLine
             | Action::InputChar(_)
             | Action::Backspace
             | Action::FollowLink => {}

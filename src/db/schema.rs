@@ -12,8 +12,17 @@ impl Database {
         let total_rows = count_rows(&self.conn, &safe_table_name, "", &[])?;
         let create_sql = self.conn.query_row(
             "SELECT sql
-             FROM sqlite_master
-             WHERE type = 'table' AND name = ?1",
+             FROM (
+                 SELECT sql, 0 AS priority
+                 FROM sqlite_temp_master
+                 WHERE type = 'table' AND name = ?1
+                 UNION ALL
+                 SELECT sql, 1 AS priority
+                 FROM sqlite_master
+                 WHERE type = 'table' AND name = ?1
+             )
+             ORDER BY priority
+             LIMIT 1",
             [table_name],
             |row| row.get::<_, Option<String>>(0),
         )?;
