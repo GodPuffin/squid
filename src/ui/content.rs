@@ -60,10 +60,10 @@ fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         frame.render_widget(status, layout.content);
     }
 
-    let usage = Paragraph::new(app.home_usage_line())
+    let controls = Paragraph::new(app.footer_hint())
         .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Gray));
-    frame.render_widget(usage, layout.footer);
+        .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(controls, layout.footer);
 }
 
 fn centered_fixed_rect(

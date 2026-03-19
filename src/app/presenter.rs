@@ -299,10 +299,6 @@ impl App {
         }
     }
 
-    pub fn home_usage_line(&self) -> String {
-        "squid <database>   --help   --version".to_string()
-    }
-
     pub fn home_recent_lines(&self) -> Vec<String> {
         if self.recent_items.is_empty() {
             vec!["No recent files".to_string()]
