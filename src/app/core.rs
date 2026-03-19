@@ -4,7 +4,9 @@ use anyhow::{Result, anyhow};
 
 use crate::db::{Database, RowPreview};
 
-use super::{Action, App, AppMode, ContentView, PaneFocus, RecentStore};
+use super::{
+    Action, App, AppMode, ContentView, PaneFocus, RecentStore, home::normalize_database_path,
+};
 
 impl App {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
@@ -419,11 +421,7 @@ impl App {
     }
 
     pub(super) fn open_database(&mut self, path: &Path) -> Result<()> {
-        let absolute_path = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir()?.join(path)
-        };
+        let absolute_path = normalize_database_path(path)?;
         let db = Database::open(&absolute_path)?;
         let tables = db.list_tables()?;
 
@@ -470,7 +468,7 @@ impl App {
             Action::MoveUp => self.move_up()?,
             Action::MoveDown => self.move_down()?,
             Action::Confirm => self.open_selected_recent(),
-            Action::Delete => self.delete_selected_recent()?,
+            Action::Delete => self.delete_selected_recent(),
             Action::Reload => {
                 self.reload()?;
             }
@@ -523,15 +521,24 @@ impl App {
         }
     }
 
-    fn delete_selected_recent(&mut self) -> Result<()> {
+    fn delete_selected_recent(&mut self) {
         let Some(item) = self.selected_recent_item().cloned() else {
-            return Ok(());
+            return;
         };
 
-        self.recent_items = RecentStore::remove(&item.path)?;
-        self.refresh_home_selection();
-        self.status_message = Some(format!("Removed {} from recents", item.path.display()));
-        Ok(())
+        match RecentStore::remove(&item.path) {
+            Ok(items) => {
+                self.recent_items = items;
+                self.refresh_home_selection();
+                self.status_message = Some(format!("Removed {} from recents", item.path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!(
+                    "Could not remove {} from recents: {error}",
+                    item.path.display()
+                ));
+            }
+        }
     }
 
     fn refresh_home_selection(&mut self) {

@@ -21,7 +21,7 @@ impl RecentStore {
     }
 
     pub fn record(path: &Path) -> Result<Vec<RecentItem>> {
-        let absolute = absolutize(path)?;
+        let absolute = normalize_database_path(path)?;
         let storage_path = Self::storage_path()?;
         let mut paths = Self::load_from_path(&storage_path)?;
         paths.retain(|existing| existing != &absolute);
@@ -107,8 +107,8 @@ impl RecentStore {
     }
 }
 
-fn absolutize(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
+pub(super) fn normalize_database_path(path: &Path) -> Result<PathBuf> {
+    if preserves_sqlite_filename(path) || path.is_absolute() {
         Ok(path.to_path_buf())
     } else {
         Ok(env::current_dir()
@@ -117,11 +117,19 @@ fn absolutize(path: &Path) -> Result<PathBuf> {
     }
 }
 
+fn preserves_sqlite_filename(path: &Path) -> bool {
+    match path.to_str() {
+        Some(":memory:") => true,
+        Some(filename) => filename.starts_with("file:"),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::RecentStore;
+    use super::{RecentStore, normalize_database_path};
 
     #[test]
     fn load_from_path_ignores_blank_lines() {
@@ -170,6 +178,29 @@ mod tests {
 
         assert_eq!(entries.first(), Some(&target));
         assert_eq!(entries.len(), 10);
+    }
+
+    #[test]
+    fn normalize_database_path_preserves_memory_databases() {
+        let path = std::path::Path::new(":memory:");
+
+        assert_eq!(normalize_database_path(path).unwrap(), path);
+    }
+
+    #[test]
+    fn normalize_database_path_preserves_sqlite_uri_filenames() {
+        let path = std::path::Path::new("file:/tmp/app.db?mode=ro");
+
+        assert_eq!(normalize_database_path(path).unwrap(), path);
+    }
+
+    #[test]
+    fn normalize_database_path_absolutizes_regular_relative_paths() {
+        let path = std::path::Path::new("sakila.db");
+        let normalized = normalize_database_path(path).unwrap();
+
+        assert!(normalized.is_absolute());
+        assert!(normalized.ends_with(path));
     }
 
     fn unique_test_path(label: &str) -> std::path::PathBuf {
