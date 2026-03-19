@@ -1,8 +1,8 @@
 use ratatui::Frame;
-use ratatui::layout::Constraint;
-use ratatui::style::{Modifier, Style};
+use ratatui::layout::{Alignment, Constraint};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Paragraph, Row, Table, TableState, Wrap};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::app::{App, ContentView, PaneFocus};
 
@@ -12,7 +12,7 @@ use super::widgets::panel_block;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     if app.is_home() {
-        render_home(frame, app, layout.content);
+        render_home(frame, app, layout);
         return;
     }
 
@@ -22,12 +22,60 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     }
 }
 
-fn render_home(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let lines: Vec<Line<'_>> = app.schema_lines().into_iter().map(Line::from).collect();
-    let home = Paragraph::new(lines)
-        .block(panel_block("Welcome", app.focus == PaneFocus::Content))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(home, area);
+fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    let raw_logo_lines = app.home_logo_lines();
+    let logo_width = raw_logo_lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0) as u16;
+    let logo_height = raw_logo_lines.len() as u16;
+    let logo_area = centered_fixed_rect(layout.header, logo_width, logo_height);
+    let logo_lines: Vec<Line<'_>> = raw_logo_lines.into_iter().map(Line::from).collect();
+    let logo = Paragraph::new(logo_lines);
+    frame.render_widget(logo, logo_area);
+
+    let items: Vec<ListItem<'_>> = app
+        .home_recent_lines()
+        .into_iter()
+        .map(ListItem::new)
+        .collect();
+    let recents = List::new(items)
+        .block(panel_block("recents", app.focus == PaneFocus::Tables))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("  ");
+    let mut state = ListState::default();
+    if !app.recent_items.is_empty() {
+        state.select(Some(app.selected_recent));
+    }
+    frame.render_stateful_widget(recents, layout.tables, &mut state);
+
+    if let Some(status) = app.home_status_line() {
+        let status = Paragraph::new(status).alignment(Alignment::Center);
+        frame.render_widget(status, layout.content);
+    }
+
+    let usage = Paragraph::new(app.home_usage_line())
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::Gray));
+    frame.render_widget(usage, layout.footer);
+}
+
+fn centered_fixed_rect(
+    area: ratatui::layout::Rect,
+    width: u16,
+    height: u16,
+) -> ratatui::layout::Rect {
+    let width = width.min(area.width);
+    let height = height.min(area.height);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    ratatui::layout::Rect::new(x, y, width, height)
 }
 
 fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {

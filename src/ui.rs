@@ -17,6 +17,11 @@ pub use layout::{
 pub fn render(frame: &mut Frame, app: &App) {
     let layout = layout_info(frame.area(), app);
 
+    if app.is_home() {
+        content::render(frame, app, &layout);
+        return;
+    }
+
     chrome::render_header(frame, app, layout.header);
     tables::render_tables(frame, app, layout.tables);
     content::render(frame, app, &layout);

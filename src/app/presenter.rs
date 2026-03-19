@@ -4,6 +4,15 @@ use crate::db::FilterMode;
 
 use super::{App, FilterPane, ModalPane, SearchScope};
 
+const HOME_LOGO: &str = concat!(
+    " ▄▄▄▄▄▄▄   ▄▄▄▄▄   ▄▄▄  ▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄\n",
+    "█████▀▀▀ ▄███████▄ ███  ███  ███  ███▀▀██▄\n",
+    " ▀████▄  ███   ███ ███  ███  ███  ███  ███\n",
+    "   ▀████ ███▄█▄███ ███▄▄███  ███  ███  ███\n",
+    "███████▀  ▀█████▀  ▀██████▀ ▄███▄ ██████▀\n",
+    "               ▀▀"
+);
+
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
         if self.is_home() {
@@ -46,13 +55,7 @@ impl App {
 
     pub fn footer_hint(&self) -> String {
         if self.is_home() {
-            if self.recent_items.is_empty() {
-                "Run `squid path\\to\\database.sqlite` to open a database  r reload recents  q quit"
-                    .to_string()
-            } else {
-                "Up/Down move  Enter open recent database  Delete remove recent  r reload  q quit"
-                    .to_string()
-            }
+            "up/down move  enter open  del remove  r reload  q quit".to_string()
         } else if self.detail.is_some() {
             "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
         } else if self.filter_modal.is_some() {
@@ -79,7 +82,7 @@ impl App {
 
     pub fn content_title(&self) -> String {
         if self.is_home() {
-            return "Welcome".to_string();
+            return "Home".to_string();
         }
 
         let table = self.selected_table_name().unwrap_or("Rows");
@@ -296,28 +299,33 @@ impl App {
         }
     }
 
-    fn home_screen_lines(&self) -> Vec<String> {
-        let mut lines = vec![
-            "Open a recent SQLite database or launch squid with a path.".to_string(),
-            String::new(),
-            "Examples".to_string(),
-            "  squid".to_string(),
-            "  squid path\\to\\database.sqlite".to_string(),
-            "  squid --help".to_string(),
-            "  squid --version".to_string(),
-        ];
+    pub fn home_usage_line(&self) -> String {
+        "squid <database>   --help   --version".to_string()
+    }
 
+    pub fn home_recent_lines(&self) -> Vec<String> {
         if self.recent_items.is_empty() {
-            lines.push(String::new());
-            lines.push("No recent databases yet.".to_string());
+            vec!["No recent files".to_string()]
+        } else {
+            self.recent_items
+                .iter()
+                .map(|item| {
+                    if item.available {
+                        item.path.display().to_string()
+                    } else {
+                        format!("{} [missing]", item.path.display())
+                    }
+                })
+                .collect()
         }
+    }
 
-        if let Some(status) = self.home_status_line() {
-            lines.push(String::new());
-            lines.push(status);
-        }
+    pub fn home_logo_lines(&self) -> Vec<String> {
+        HOME_LOGO.lines().map(str::to_string).collect()
+    }
 
-        lines
+    fn home_screen_lines(&self) -> Vec<String> {
+        self.home_logo_lines()
     }
 }
 

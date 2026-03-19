@@ -65,6 +65,21 @@ pub fn viewport_sizes(area: Rect) -> ViewportSizes {
 }
 
 pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
+    if app.is_home() {
+        let home = home_layout(area);
+        return LayoutInfo {
+            header: home.header,
+            tables: home.recents,
+            content: home.content,
+            footer: home.footer,
+            search_box: None,
+            search_results: None,
+            detail: None,
+            filter_modal: None,
+            modal: None,
+        };
+    }
+
     let areas = root_layout(area);
     let tables_width = app.table_pane_width();
     let body = body_layout(areas[1], tables_width);
@@ -79,6 +94,38 @@ pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
         detail: app.detail.as_ref().map(|_| detail_rects(area)),
         filter_modal: app.filter_modal.as_ref().map(|_| filter_modal_rects(area)),
         modal: app.modal.as_ref().map(|_| modal_rects(area)),
+    }
+}
+
+struct HomeLayout {
+    header: Rect,
+    content: Rect,
+    recents: Rect,
+    footer: Rect,
+}
+
+fn home_layout(area: Rect) -> HomeLayout {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Length(8),
+            Constraint::Length(9),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+    let recents = centered_rect(vertical[2], 34, 100);
+    let content = centered_rect(vertical[3], 60, 100);
+    let footer = centered_rect(vertical[4], 70, 100);
+
+    HomeLayout {
+        header: vertical[1],
+        content,
+        recents,
+        footer,
     }
 }
 
