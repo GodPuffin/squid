@@ -26,6 +26,9 @@ pub struct LayoutInfo {
 pub struct HeaderTabRects {
     pub browse: Rect,
     pub sql: Rect,
+    pub path: Rect,
+    pub run: Rect,
+    pub quit: Rect,
 }
 
 pub struct SqlRects {
@@ -193,7 +196,22 @@ pub fn header_tab_rects(area: Rect) -> HeaderTabRects {
     let inner_y = area.y.saturating_add(1);
     let browse = Rect::new(inner_x, inner_y, 10, 1);
     let sql = Rect::new(inner_x.saturating_add(11), inner_y, 7, 1);
-    HeaderTabRects { browse, sql }
+    let quit_width = 8;
+    let run_width = 7;
+    let quit_x = area.x + area.width.saturating_sub(quit_width + 2);
+    let run_x = quit_x.saturating_sub(run_width + 1);
+    let path_x = sql.x + sql.width + 2;
+    let path_width = run_x.saturating_sub(path_x + 1);
+    let path = Rect::new(path_x, inner_y, path_width, 1);
+    let run = Rect::new(run_x, inner_y, run_width, 1);
+    let quit = Rect::new(quit_x, inner_y, quit_width, 1);
+    HeaderTabRects {
+        browse,
+        sql,
+        path,
+        run,
+        quit,
+    }
 }
 
 pub fn sql_completion_rect(editor_area: Rect, cursor_line: usize, cursor_col: usize) -> Rect {

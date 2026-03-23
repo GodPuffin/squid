@@ -33,7 +33,7 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
 
     let text = if visible.is_empty() {
         Text::from(Line::from(vec![Span::styled(
-            "-- Write SQL here. Press F5 to run.",
+            "-- Write SQL here. Press F5 or click Run.",
             Style::default().fg(Color::DarkGray),
         )]))
     } else {

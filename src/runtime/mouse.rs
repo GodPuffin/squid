@@ -10,6 +10,7 @@ use crate::ui::{self, LayoutInfo};
 pub struct MouseState {
     last_search_click: Option<(usize, Instant)>,
     last_row_click: Option<(usize, Instant)>,
+    last_sql_history_click: Option<(usize, Instant)>,
 }
 
 pub fn handle_mouse_event(
@@ -18,18 +19,25 @@ pub fn handle_mouse_event(
     mouse: MouseEvent,
     state: &mut MouseState,
     now: Instant,
-) -> Result<()> {
+) -> Result<bool> {
     let column = mouse.column;
     let row = mouse.row;
 
     if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
         if contains(layout.header_tabs.browse, column, row) {
             app.handle(Action::SwitchToBrowse)?;
-            return Ok(());
+            return Ok(false);
         }
         if contains(layout.header_tabs.sql, column, row) {
             app.handle(Action::SwitchToSql)?;
-            return Ok(());
+            return Ok(false);
+        }
+        if app.mode == crate::app::AppMode::Sql && contains(layout.header_tabs.run, column, row) {
+            app.handle(Action::ExecuteSql)?;
+            return Ok(false);
+        }
+        if contains(layout.header_tabs.quit, column, row) {
+            return Ok(app.modal.is_none());
         }
     }
 
@@ -41,14 +49,22 @@ pub fn handle_mouse_event(
                 {
                     app.sql_select_completion_in_view(index);
                     app.sql_apply_selected_completion();
+                    state.last_sql_history_click = None;
                 } else if contains(sql.editor, column, row) {
                     let line_in_view = row.saturating_sub(sql.editor.y + 1) as usize;
                     let col_in_view = column.saturating_sub(sql.editor.x) as usize;
                     app.sql_set_cursor_from_view(line_in_view, col_in_view);
+                    state.last_sql_history_click = None;
                 } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
+                    app.sql_focus_history();
                     app.sql_select_history_in_view(index);
+                    handle_sql_history_double_click(app, state, now)?;
+                } else if contains(sql.history, column, row) {
+                    app.sql_focus_history();
+                    state.last_sql_history_click = None;
                 } else if contains(sql.results, column, row) {
                     app.sql_focus_results();
+                    state.last_sql_history_click = None;
                 }
             }
             MouseEventKind::ScrollUp => {
@@ -59,6 +75,9 @@ pub fn handle_mouse_event(
                 } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
                     app.sql_select_history_in_view(index);
                     app.handle(Action::MoveUp)?;
+                } else if contains(sql.history, column, row) {
+                    app.sql_focus_history();
+                    app.handle(Action::MoveUp)?;
                 } else if contains(sql.editor, column, row) {
                     app.sql_focus_editor();
                     app.handle(Action::MoveUp)?;
@@ -66,6 +85,7 @@ pub fn handle_mouse_event(
                     app.sql_focus_results();
                     app.handle(Action::MoveUp)?;
                 }
+                state.last_sql_history_click = None;
             }
             MouseEventKind::ScrollDown => {
                 if let Some(completion) = sql.completion
@@ -75,6 +95,9 @@ pub fn handle_mouse_event(
                 } else if let Some(index) = ui::list_row_at(sql.history, column, row) {
                     app.sql_select_history_in_view(index);
                     app.handle(Action::MoveDown)?;
+                } else if contains(sql.history, column, row) {
+                    app.sql_focus_history();
+                    app.handle(Action::MoveDown)?;
                 } else if contains(sql.editor, column, row) {
                     app.sql_focus_editor();
                     app.handle(Action::MoveDown)?;
@@ -82,10 +105,11 @@ pub fn handle_mouse_event(
                     app.sql_focus_results();
                     app.handle(Action::MoveDown)?;
                 }
+                state.last_sql_history_click = None;
             }
             _ => {}
         }
-        return Ok(());
+        return Ok(false);
     }
 
     if let Some(modal) = &layout.modal {
@@ -126,7 +150,7 @@ pub fn handle_mouse_event(
             )?,
             _ => {}
         }
-        return Ok(());
+        return Ok(false);
     }
 
     if let Some(filter_modal) = &layout.filter_modal {
@@ -172,7 +196,7 @@ pub fn handle_mouse_event(
             }
             _ => {}
         }
-        return Ok(());
+        return Ok(false);
     }
 
     if let Some(detail) = &layout.detail {
@@ -204,7 +228,7 @@ pub fn handle_mouse_event(
             }
             _ => {}
         }
-        return Ok(());
+        return Ok(false);
     }
 
     if let (Some(search_box), Some(search_results)) = (&layout.search_box, &layout.search_results) {
@@ -213,24 +237,24 @@ pub fn handle_mouse_event(
                 if let Some(index) = ui::search_result_row_at(*search_results, column, row) {
                     app.select_search_result_in_view(index);
                     handle_search_double_click(app, state, now)?;
-                    return Ok(());
+                    return Ok(false);
                 }
                 if contains(*search_box, column, row) {
                     app.focus_content();
                     state.last_search_click = None;
-                    return Ok(());
+                    return Ok(false);
                 }
                 state.last_search_click = None;
             }
             MouseEventKind::ScrollUp if contains(*search_results, column, row) => {
                 app.scroll_search(-1);
                 state.last_search_click = None;
-                return Ok(());
+                return Ok(false);
             }
             MouseEventKind::ScrollDown if contains(*search_results, column, row) => {
                 app.scroll_search(1);
                 state.last_search_click = None;
-                return Ok(());
+                return Ok(false);
             }
             _ => {}
         }
@@ -271,7 +295,7 @@ pub fn handle_mouse_event(
         _ => {}
     }
 
-    Ok(())
+    Ok(false)
 }
 
 fn scroll_modal_hit(app: &mut App, hits: [Option<usize>; 3], action: Action) -> Result<()> {
@@ -300,6 +324,21 @@ fn handle_row_double_click(app: &mut App, state: &mut MouseState, now: Instant) 
         state.last_row_click = None;
     } else {
         state.last_row_click = Some((selected, now));
+    }
+    Ok(())
+}
+
+fn handle_sql_history_double_click(
+    app: &mut App,
+    state: &mut MouseState,
+    now: Instant,
+) -> Result<()> {
+    let selected = app.sql.selected_history;
+    if is_double_click(state.last_sql_history_click, selected, now) {
+        app.handle(Action::Confirm)?;
+        state.last_sql_history_click = None;
+    } else {
+        state.last_sql_history_click = Some((selected, now));
     }
     Ok(())
 }

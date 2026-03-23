@@ -53,13 +53,18 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: PathBuf) -> Result<()
                 }
                 app.handle(action)?;
             }
-            Event::Mouse(event) => mouse::handle_mouse_event(
-                &mut app,
-                &layout,
-                event,
-                &mut mouse_state,
-                Instant::now(),
-            )?,
+            Event::Mouse(event) => {
+                let should_quit = mouse::handle_mouse_event(
+                    &mut app,
+                    &layout,
+                    event,
+                    &mut mouse_state,
+                    Instant::now(),
+                )?;
+                if should_quit {
+                    break;
+                }
+            }
             _ => {}
         }
     }

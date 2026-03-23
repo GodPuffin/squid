@@ -150,6 +150,11 @@ impl App {
         self.sql.focus = SqlPane::Editor;
     }
 
+    pub fn sql_focus_history(&mut self) {
+        self.sql.focus = SqlPane::History;
+        self.ensure_sql_viewport();
+    }
+
     pub fn sql_focus_results(&mut self) {
         self.sql.focus = SqlPane::Results;
     }
