@@ -22,7 +22,7 @@ impl Database {
                 .map(str::to_string)
                 .collect::<Vec<_>>();
             let column_count = columns.len();
-            let rows = stmt
+            let mut rows = stmt
                 .query_map([], |row| {
                     let mut values = Vec::with_capacity(column_count);
                     for idx in 0..column_count {
@@ -30,13 +30,18 @@ impl Database {
                     }
                     Ok(values)
                 })?
-                .take(row_limit)
+                .take(row_limit + 1)
                 .collect::<Result<Vec<_>, _>>()?;
+            let is_truncated = rows.len() > row_limit;
+            if is_truncated {
+                rows.truncate(row_limit);
+            }
 
             Ok(SqlExecutionResult::Rows {
                 columns,
                 rows,
                 is_mutation,
+                is_truncated,
             })
         } else {
             drop(stmt);
@@ -88,6 +93,7 @@ mod tests {
                 columns,
                 rows,
                 is_mutation,
+                is_truncated,
             } => {
                 assert_eq!(columns, vec!["name"]);
                 assert_eq!(
@@ -95,6 +101,7 @@ mod tests {
                     vec![vec!["alpha".to_string()], vec!["beta".to_string()]]
                 );
                 assert!(!is_mutation);
+                assert!(!is_truncated);
             }
             SqlExecutionResult::Statement { .. } => panic!("expected rows"),
         }
@@ -156,10 +163,12 @@ mod tests {
                 columns,
                 rows,
                 is_mutation,
+                is_truncated,
             } => {
                 assert_eq!(columns, vec!["name"]);
                 assert_eq!(rows, vec![vec!["alpha".to_string()]]);
                 assert!(!is_mutation);
+                assert!(!is_truncated);
             }
             SqlExecutionResult::Statement { .. } => panic!("expected rows"),
         }
@@ -240,10 +249,45 @@ mod tests {
                 columns,
                 rows,
                 is_mutation,
+                is_truncated,
             } => {
                 assert_eq!(columns, vec!["id"]);
                 assert_eq!(rows.len(), 1);
                 assert!(is_mutation);
+                assert!(!is_truncated);
+            }
+            SqlExecutionResult::Statement { .. } => panic!("expected rows"),
+        }
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn execute_sql_marks_truncated_row_results() {
+        let path = temp_db_path("truncated");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        for idx in 0..205 {
+            conn.execute(
+                "INSERT INTO demo(name) VALUES (?1)",
+                [format!("name-{idx}")],
+            )
+            .expect("insert row");
+        }
+        drop(conn);
+
+        let db = Database::open(&path).expect("open db");
+        let result = db
+            .execute_sql("SELECT name FROM demo ORDER BY id", 200)
+            .expect("select");
+
+        match result {
+            SqlExecutionResult::Rows {
+                rows, is_truncated, ..
+            } => {
+                assert_eq!(rows.len(), 200);
+                assert!(is_truncated);
             }
             SqlExecutionResult::Statement { .. } => panic!("expected rows"),
         }

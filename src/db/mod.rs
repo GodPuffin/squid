@@ -92,6 +92,7 @@ pub enum SqlExecutionResult {
         columns: Vec<String>,
         rows: Vec<Vec<String>>,
         is_mutation: bool,
+        is_truncated: bool,
     },
     Statement {
         affected_rows: usize,
@@ -134,22 +135,24 @@ impl Database {
 
     pub fn list_tables(&self) -> Result<Vec<TableSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT name
+            "SELECT schema_name, name
              FROM (
-                 SELECT name
+                 SELECT 'main' AS schema_name, name
                  FROM sqlite_master
                  WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-                 UNION
-                 SELECT name
+                 UNION ALL
+                 SELECT 'temp' AS schema_name, name
                  FROM sqlite_temp_master
                  WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
              )
-             ORDER BY name",
+             ORDER BY name, schema_name",
         )?;
 
         let rows = stmt.query_map([], |row| {
+            let schema_name = row.get::<_, String>(0)?;
+            let table_name = row.get::<_, String>(1)?;
             Ok(TableSummary {
-                name: row.get::<_, String>(0)?,
+                name: format!("{schema_name}.{table_name}"),
             })
         })?;
 

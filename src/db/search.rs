@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::params;
 
-use super::query::{build_filter_where, quote_identifier};
+use super::query::{build_filter_where, quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, TableSummary};
 
@@ -18,7 +18,7 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let columns = if visible_columns.is_empty() {
             self.list_columns(table_name)?
         } else {
@@ -125,7 +125,7 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let select_list = columns
             .iter()
             .map(|column| quote_identifier(column))

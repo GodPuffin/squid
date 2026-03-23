@@ -513,12 +513,14 @@ impl App {
                 columns,
                 rows,
                 is_mutation,
+                is_truncated,
             }) => {
                 let row_count = rows.len();
+                let summary = sql_rows_summary(row_count, is_truncated);
                 self.sql.result = SqlResultState::Rows { columns, rows };
                 self.sql.result_scroll = 0;
-                self.sql.status = format!("Returned {row_count} row(s)");
-                self.push_sql_history(query, format!("Rows: {row_count}"));
+                self.sql.status = summary.clone();
+                self.push_sql_history(query, summary);
                 if is_mutation {
                     self.refresh_loaded_db_state()?;
                 }
@@ -625,6 +627,7 @@ impl App {
     fn sql_completion_candidates(&self, prefix: &str) -> Result<Vec<SqlCompletionItem>> {
         let prefix_lower = prefix.to_lowercase();
         let qualifier = completion_qualifier(prefix);
+        let tables = completion_tables_for_qualifier(&self.tables, qualifier);
         let mut items = Vec::new();
 
         for keyword in SQL_KEYWORDS {
@@ -641,7 +644,7 @@ impl App {
             });
         }
 
-        for table in &self.tables {
+        for table in tables {
             items.push(SqlCompletionItem {
                 label: table.name.clone(),
                 insert_text: table.name.clone(),
@@ -673,6 +676,14 @@ impl App {
 fn completion_matches(prefix_lower: &str, item: &SqlCompletionItem) -> bool {
     item.label.to_lowercase().starts_with(prefix_lower)
         || item.insert_text.to_lowercase().starts_with(prefix_lower)
+}
+
+fn sql_rows_summary(row_count: usize, is_truncated: bool) -> String {
+    if is_truncated {
+        format!("Returned {row_count} row(s) (truncated at {SQL_RESULT_LIMIT})")
+    } else {
+        format!("Returned {row_count} row(s)")
+    }
 }
 
 fn previous_boundary(value: &str, index: usize) -> usize {
@@ -768,6 +779,40 @@ fn completion_qualifier(prefix: &str) -> &str {
         .unwrap_or("")
 }
 
+fn completion_tables_for_qualifier<'a>(
+    tables: &'a [crate::db::TableSummary],
+    qualifier: &str,
+) -> Vec<&'a crate::db::TableSummary> {
+    if qualifier.is_empty() {
+        return tables.iter().collect();
+    }
+
+    let qualifier = qualifier.trim_end_matches('.');
+    let exact_matches = tables
+        .iter()
+        .filter(|table| table.name.eq_ignore_ascii_case(qualifier))
+        .collect::<Vec<_>>();
+    if !exact_matches.is_empty() {
+        return exact_matches;
+    }
+
+    let bare_matches = tables
+        .iter()
+        .filter(|table| {
+            table
+                .name
+                .rsplit('.')
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case(qualifier))
+        })
+        .collect::<Vec<_>>();
+    if bare_matches.len() == 1 {
+        bare_matches
+    } else {
+        tables.iter().collect()
+    }
+}
+
 fn is_completion_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'
 }
@@ -780,7 +825,10 @@ mod tests {
 
     use rusqlite::Connection;
 
-    use super::{completion_prefix, completion_qualifier, line_col_from_index, move_vertical};
+    use super::{
+        completion_prefix, completion_qualifier, completion_tables_for_qualifier,
+        line_col_from_index, move_vertical, sql_rows_summary,
+    };
     use crate::app::App;
 
     #[test]
@@ -821,19 +869,50 @@ mod tests {
         drop(conn);
 
         let mut app = App::load(path.clone()).expect("load app");
-        app.sql.query = "SELECT orders.".to_string();
+        app.sql.query = "SELECT main.orders.".to_string();
         app.sql.cursor = app.sql.query.len();
         app.sql_refresh_completion().expect("refresh completion");
         let completion = app.sql.completion.as_mut().expect("completion");
         completion.selected = completion
             .items
             .iter()
-            .position(|item| item.label == "orders.id")
-            .expect("orders.id completion");
+            .position(|item| item.label == "main.orders.id")
+            .expect("main.orders.id completion");
 
         app.sql_apply_completion();
 
-        assert_eq!(app.sql.query, "SELECT orders.id");
+        assert_eq!(app.sql.query, "SELECT main.orders.id");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_completion_qualified_table_filters_out_other_tables() {
+        let path = temp_db_path("qualified-filter");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY)", [])
+            .expect("create orders");
+        conn.execute("CREATE TABLE customers(name TEXT)", [])
+            .expect("create customers");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT main.orders.".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+
+        let labels = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("completion")
+            .items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(labels.contains(&"main.orders.id"));
+        assert!(!labels.contains(&"main.customers.name"));
 
         let _ = fs::remove_file(path);
     }
@@ -916,6 +995,15 @@ mod tests {
     }
 
     #[test]
+    fn sql_rows_summary_marks_truncation() {
+        assert_eq!(sql_rows_summary(200, false), "Returned 200 row(s)");
+        assert_eq!(
+            sql_rows_summary(200, true),
+            "Returned 200 row(s) (truncated at 200)"
+        );
+    }
+
+    #[test]
     fn sql_execute_preserves_connection_scoped_state() {
         let path = temp_db_path("connection-state");
         let conn = Connection::open(&path).expect("create db");
@@ -965,12 +1053,12 @@ mod tests {
         let temp_index = app
             .tables
             .iter()
-            .position(|table| table.name == "temp_demo")
+            .position(|table| table.name == "temp.temp_demo")
             .expect("temp table should be listed");
         app.selected_table = temp_index;
         app.refresh_preview().expect("refresh temp preview");
 
-        assert_eq!(app.selected_table_name(), Some("temp_demo"));
+        assert_eq!(app.selected_table_name(), Some("temp.temp_demo"));
         assert_eq!(app.preview.total_rows, 0);
         assert_eq!(
             app.details
@@ -980,6 +1068,25 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn completion_tables_for_qualifier_only_narrows_on_matching_tables() {
+        let tables = vec![
+            crate::db::TableSummary {
+                name: "main.orders".to_string(),
+            },
+            crate::db::TableSummary {
+                name: "main.customers".to_string(),
+            },
+        ];
+
+        let narrowed = completion_tables_for_qualifier(&tables, "main.orders.");
+        assert_eq!(narrowed.len(), 1);
+        assert_eq!(narrowed[0].name, "main.orders");
+
+        let alias_fallback = completion_tables_for_qualifier(&tables, "o.");
+        assert_eq!(alias_fallback.len(), 2);
     }
 
     fn temp_db_path(label: &str) -> PathBuf {
