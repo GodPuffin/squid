@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
     let header = format!(
         "{}  {}",
-        app.selected_table_name().unwrap_or("Row"),
+        app.selected_table_label().as_deref().unwrap_or("Row"),
         detail.row_label
     );
     let (_value_title, value_lines, helper, value_title) = detail_value_content(app);
@@ -78,7 +78,9 @@ fn detail_value_content(app: &App) -> (String, Vec<Line<'static>>, String, Strin
     let title = if let Some(target) = &field.foreign_target {
         format!(
             "{}  -> {}.{}",
-            field.column_name, target.table_name, target.column_name
+            field.column_name,
+            app.display_table_name(&target.table_name),
+            target.column_name
         )
     } else {
         field.column_name.clone()

@@ -256,6 +256,7 @@ impl App {
         match self.sql.focus {
             SqlPane::Editor => {
                 self.sql.cursor = move_vertical(&self.sql.query, self.sql.cursor, -1);
+                let _ = self.sql_refresh_completion();
                 self.ensure_sql_viewport();
             }
             SqlPane::History => {
@@ -284,6 +285,7 @@ impl App {
         match self.sql.focus {
             SqlPane::Editor => {
                 self.sql.cursor = move_vertical(&self.sql.query, self.sql.cursor, 1);
+                let _ = self.sql_refresh_completion();
                 self.ensure_sql_viewport();
             }
             SqlPane::History => {
@@ -645,15 +647,17 @@ impl App {
         }
 
         for table in tables {
+            let table_label = completion_table_label(self, &table.name, qualifier);
+            let table_insert_text = completion_table_insert_text(self, &table.name, qualifier);
             let insert_prefix = completion_insert_prefix(qualifier, &table.name);
             items.push(SqlCompletionItem {
-                label: table.name.clone(),
-                insert_text: table.name.clone(),
+                label: table_label.clone(),
+                insert_text: table_insert_text,
             });
 
             for column in self.db.list_columns(&table.name)? {
                 items.push(SqlCompletionItem {
-                    label: format!("{}.{}", table.name, column),
+                    label: format!("{table_label}.{}", column),
                     insert_text: format!("{insert_prefix}{column}"),
                 });
             }
@@ -780,6 +784,22 @@ fn completion_qualifier(prefix: &str) -> &str {
         .unwrap_or("")
 }
 
+fn completion_table_label(app: &App, table_name: &str, typed_qualifier: &str) -> String {
+    if typed_qualifier.is_empty() {
+        app.display_table_name(table_name)
+    } else {
+        table_name.to_string()
+    }
+}
+
+fn completion_table_insert_text(app: &App, table_name: &str, typed_qualifier: &str) -> String {
+    if typed_qualifier.is_empty() {
+        app.display_table_name(table_name)
+    } else {
+        table_name.to_string()
+    }
+}
+
 fn completion_insert_prefix(typed_qualifier: &str, table_name: &str) -> String {
     if typed_qualifier.is_empty() {
         return String::new();
@@ -866,7 +886,8 @@ mod tests {
 
     use super::{
         completion_insert_prefix, completion_prefix, completion_qualifier,
-        completion_tables_for_qualifier, line_col_from_index, move_vertical, sql_rows_summary,
+        completion_table_insert_text, completion_table_label, completion_tables_for_qualifier,
+        line_col_from_index, move_vertical, sql_rows_summary,
     };
     use crate::app::{Action, App};
 
@@ -910,6 +931,19 @@ mod tests {
             "orders."
         );
         assert_eq!(completion_insert_prefix("o.", "main.orders"), "o.");
+    }
+
+    #[test]
+    fn completion_uses_bare_main_names_when_not_ambiguous() {
+        let app = test_app_with_tables(
+            "main-labels",
+            &["CREATE TABLE orders(id INTEGER PRIMARY KEY)"],
+        );
+        assert_eq!(completion_table_label(&app, "main.orders", ""), "orders");
+        assert_eq!(
+            completion_table_insert_text(&app, "main.orders", ""),
+            "orders"
+        );
     }
 
     #[test]
@@ -1022,6 +1056,41 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(items.contains(&"name"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_move_up_refreshes_completion_for_new_line_prefix() {
+        let path = temp_db_path("vertical-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SE\nFR".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("initial completion");
+
+        let before = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("initial completion")
+            .prefix_start;
+        assert_eq!(before, 3);
+
+        app.sql_move_up();
+
+        let completion = app.sql.completion.as_ref().expect("refreshed completion");
+        assert_eq!(completion.prefix_start, 0);
+        assert!(
+            completion
+                .items
+                .iter()
+                .any(|item| item.insert_text == "SELECT")
+        );
 
         let _ = fs::remove_file(path);
     }
@@ -1270,5 +1339,18 @@ mod tests {
             .expect("clock")
             .as_nanos();
         std::env::temp_dir().join(format!("squid-sql-{label}-{stamp}.sqlite"))
+    }
+
+    fn test_app_with_tables(label: &str, statements: &[&str]) -> App {
+        let path = temp_db_path(label);
+        let conn = Connection::open(&path).expect("create db");
+        for statement in statements {
+            conn.execute(statement, []).expect("setup statement");
+        }
+        drop(conn);
+
+        let app = App::load(path.clone()).expect("load app");
+        let _ = fs::remove_file(path);
+        app
     }
 }

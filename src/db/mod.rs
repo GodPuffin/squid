@@ -9,6 +9,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OpenFlags};
 
+use crate::db::schema::schema_catalog_table;
+
 #[derive(Debug, Clone)]
 pub struct TableSummary {
     pub name: String,
@@ -159,11 +161,7 @@ impl Database {
     }
 
     fn list_tables_in_schema(&self, schema_name: &str) -> Result<Vec<String>> {
-        let master_table = if schema_name == "temp" {
-            "sqlite_temp_master".to_string()
-        } else {
-            format!("{}.sqlite_master", quote_identifier(schema_name))
-        };
+        let master_table = schema_catalog_table(schema_name);
         let sql = format!(
             "SELECT name
              FROM {master_table}
@@ -180,10 +178,6 @@ impl Database {
 
         Ok(tables)
     }
-}
-
-fn quote_identifier(value: &str) -> String {
-    format!("\"{}\"", value.replace('\"', "\"\""))
 }
 
 #[cfg(test)]

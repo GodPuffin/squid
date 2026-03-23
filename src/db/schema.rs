@@ -11,10 +11,7 @@ impl Database {
         let columns = self.column_info(table_name)?;
         let total_rows = count_rows(&self.conn, &safe_table_name, "", &[])?;
         let create_sql = if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
-            let master_table = match schema {
-                "temp" => "sqlite_temp_master",
-                _ => "sqlite_master",
-            };
+            let master_table = schema_catalog_table(schema);
             let sql = format!(
                 "SELECT sql
                  FROM {master_table}
@@ -120,6 +117,14 @@ fn qualify_foreign_target_table(source_schema: Option<&str>, target_table: &str)
     }
 }
 
+pub(crate) fn schema_catalog_table(schema_name: &str) -> String {
+    if schema_name == "temp" {
+        "sqlite_temp_master".to_string()
+    } else {
+        format!("{}.sqlite_master", quote_identifier(schema_name))
+    }
+}
+
 fn table_pragma_sql(table_name: &str, pragma_name: &str) -> String {
     if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
         format!(
@@ -164,6 +169,41 @@ mod tests {
         assert_eq!(foreign_keys[0].target_table, "main.customers");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn table_details_reads_create_sql_from_attached_schema() {
+        let main_path = temp_db_path("attached-main");
+        let attached_path = temp_db_path("attached-other");
+
+        let conn = Connection::open(&main_path).expect("create main db");
+        conn.execute(
+            "ATTACH DATABASE ?1 AS other",
+            [attached_path.to_string_lossy().into_owned()],
+        )
+        .expect("attach db");
+        conn.execute("CREATE TABLE other.demo(id INTEGER PRIMARY KEY)", [])
+            .expect("create attached table");
+        drop(conn);
+
+        let db = Database::open(&main_path).expect("open db");
+        db.conn
+            .execute(
+                "ATTACH DATABASE ?1 AS other",
+                [attached_path.to_string_lossy().into_owned()],
+            )
+            .expect("attach db");
+        let details = db
+            .table_details("other.demo")
+            .expect("attached table details");
+
+        assert_eq!(
+            details.create_sql.as_deref(),
+            Some("CREATE TABLE demo(id INTEGER PRIMARY KEY)")
+        );
+
+        let _ = fs::remove_file(main_path);
+        let _ = fs::remove_file(attached_path);
     }
 
     fn temp_db_path(label: &str) -> PathBuf {

@@ -173,6 +173,20 @@ impl App {
             .map(|table| table.name.as_str())
     }
 
+    pub fn display_table_name(&self, table_name: &str) -> String {
+        match split_table_name(table_name) {
+            Some(("main", bare_name)) if !self.has_table_name_collision(bare_name) => {
+                bare_name.to_string()
+            }
+            _ => table_name.to_string(),
+        }
+    }
+
+    pub fn selected_table_label(&self) -> Option<String> {
+        self.selected_table_name()
+            .map(|table_name| self.display_table_name(table_name))
+    }
+
     pub fn selected_row_in_view(&self) -> Option<usize> {
         self.selected_row
             .checked_sub(self.row_offset)
@@ -183,11 +197,25 @@ impl App {
         let longest_name = self
             .tables
             .iter()
-            .map(|table| table.name.chars().count())
+            .map(|table| self.display_table_name(&table.name).chars().count())
             .max()
             .unwrap_or("No tables".len());
         let width = longest_name.saturating_add(6);
         width.min(40) as u16
+    }
+
+    fn has_table_name_collision(&self, bare_name: &str) -> bool {
+        self.tables
+            .iter()
+            .filter(|table| {
+                split_table_name(&table.name)
+                    .map(|(_, name)| name)
+                    .unwrap_or(table.name.as_str())
+                    == bare_name
+            })
+            .take(2)
+            .count()
+            > 1
     }
 
     pub(super) fn toggle_focus(&mut self) {
@@ -379,4 +407,8 @@ impl App {
         self.row_offset = 0;
         self.schema_offset = 0;
     }
+}
+
+fn split_table_name(table_name: &str) -> Option<(&str, &str)> {
+    table_name.split_once('.')
 }

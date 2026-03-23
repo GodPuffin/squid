@@ -9,9 +9,12 @@ impl App {
         let Some(details) = &self.details else {
             return vec!["No schema details available".to_string()];
         };
+        let table_label = self
+            .selected_table_label()
+            .unwrap_or_else(|| "-".to_string());
 
         let mut lines = vec![
-            format!("Table: {}", self.selected_table_name().unwrap_or("-")),
+            format!("Table: {table_label}"),
             format!("Rows: {}", details.total_rows),
             String::new(),
             format!("Columns ({})", details.columns.len()),
@@ -69,12 +72,14 @@ impl App {
     }
 
     pub fn content_title(&self) -> String {
-        let table = self.selected_table_name().unwrap_or("Rows");
+        let table = self
+            .selected_table_label()
+            .unwrap_or_else(|| "Rows".to_string());
         let hidden = self.hidden_column_count();
         let filters = self.filter_summary();
         let sort = self.sort_summary();
 
-        let mut parts = vec![table.to_string()];
+        let mut parts = vec![table];
         if hidden > 0 {
             parts.push(format!("+{hidden} hidden"));
         }
