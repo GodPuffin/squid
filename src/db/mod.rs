@@ -134,27 +134,44 @@ impl Database {
     }
 
     pub fn list_tables(&self) -> Result<Vec<TableSummary>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT schema_name, name
-             FROM (
-                 SELECT 'main' AS schema_name, name
-                 FROM sqlite_master
-                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-                 UNION ALL
-                 SELECT 'temp' AS schema_name, name
-                 FROM sqlite_temp_master
-                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-             )
-             ORDER BY name, schema_name",
-        )?;
-
-        let rows = stmt.query_map([], |row| {
-            let schema_name = row.get::<_, String>(0)?;
-            let table_name = row.get::<_, String>(1)?;
-            Ok(TableSummary {
+        let mut tables = Vec::new();
+        for schema_name in self.list_attached_schemas()? {
+            let schema_tables = self.list_tables_in_schema(&schema_name)?;
+            tables.extend(schema_tables.into_iter().map(|table_name| TableSummary {
                 name: format!("{schema_name}.{table_name}"),
-            })
-        })?;
+            }));
+        }
+        tables.sort_by(|left, right| left.name.cmp(&right.name));
+
+        Ok(tables)
+    }
+
+    fn list_attached_schemas(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("PRAGMA database_list")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+
+        let mut schemas = Vec::new();
+        for row in rows {
+            schemas.push(row?);
+        }
+
+        Ok(schemas)
+    }
+
+    fn list_tables_in_schema(&self, schema_name: &str) -> Result<Vec<String>> {
+        let master_table = if schema_name == "temp" {
+            "sqlite_temp_master".to_string()
+        } else {
+            format!("{}.sqlite_master", quote_identifier(schema_name))
+        };
+        let sql = format!(
+            "SELECT name
+             FROM {master_table}
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             ORDER BY name"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
         let mut tables = Vec::new();
         for row in rows {
@@ -162,5 +179,65 @@ impl Database {
         }
 
         Ok(tables)
+    }
+}
+
+fn quote_identifier(value: &str) -> String {
+    format!("\"{}\"", value.replace('\"', "\"\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
+    use super::Database;
+
+    #[test]
+    fn list_tables_includes_attached_schemas() {
+        let main_path = temp_db_path("main");
+        let attached_path = temp_db_path("attached");
+
+        let conn = Connection::open(&main_path).expect("create main db");
+        conn.execute("CREATE TABLE main_only(id INTEGER PRIMARY KEY)", [])
+            .expect("create main table");
+        conn.execute(
+            "ATTACH DATABASE ?1 AS other",
+            [attached_path.to_string_lossy().into_owned()],
+        )
+        .expect("attach db");
+        conn.execute("CREATE TABLE other.other_only(id INTEGER PRIMARY KEY)", [])
+            .expect("create attached table");
+        drop(conn);
+
+        let db = Database::open(&main_path).expect("open db");
+        db.conn
+            .execute(
+                "ATTACH DATABASE ?1 AS other",
+                [attached_path.to_string_lossy().into_owned()],
+            )
+            .expect("attach db on app connection");
+        let tables = db.list_tables().expect("list tables");
+        let names = tables
+            .into_iter()
+            .map(|table| table.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"main.main_only".to_string()));
+        assert!(names.contains(&"other.other_only".to_string()));
+
+        let _ = fs::remove_file(main_path);
+        let _ = fs::remove_file(attached_path);
+    }
+
+    fn temp_db_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("squid-db-{label}-{stamp}.sqlite"))
     }
 }

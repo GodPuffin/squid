@@ -822,6 +822,19 @@ fn completion_tables_for_qualifier<'a>(
         return exact_matches;
     }
 
+    let schema_matches = tables
+        .iter()
+        .filter(|table| {
+            table
+                .name
+                .split_once('.')
+                .is_some_and(|(schema, _)| schema.eq_ignore_ascii_case(qualifier))
+        })
+        .collect::<Vec<_>>();
+    if !schema_matches.is_empty() {
+        return schema_matches;
+    }
+
     let bare_matches = tables
         .iter()
         .filter(|table| {
@@ -1187,14 +1200,68 @@ mod tests {
             crate::db::TableSummary {
                 name: "main.customers".to_string(),
             },
+            crate::db::TableSummary {
+                name: "temp.scratch".to_string(),
+            },
         ];
 
         let narrowed = completion_tables_for_qualifier(&tables, "main.orders.");
         assert_eq!(narrowed.len(), 1);
         assert_eq!(narrowed[0].name, "main.orders");
 
+        let schema_only = completion_tables_for_qualifier(&tables, "temp.");
+        assert_eq!(schema_only.len(), 1);
+        assert_eq!(schema_only[0].name, "temp.scratch");
+
         let alias_fallback = completion_tables_for_qualifier(&tables, "o.");
-        assert_eq!(alias_fallback.len(), 2);
+        assert_eq!(alias_fallback.len(), 3);
+    }
+
+    #[test]
+    fn sql_completion_schema_qualifier_excludes_other_schemas() {
+        let path = temp_db_path("schema-filter");
+        let attached = temp_db_path("schema-filter-attached");
+
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE id_table(id INTEGER PRIMARY KEY)", [])
+            .expect("create main table");
+        conn.execute(
+            "ATTACH DATABASE ?1 AS other",
+            [attached.to_string_lossy().into_owned()],
+        )
+        .expect("attach db");
+        conn.execute("CREATE TABLE other.other_table(other_id INTEGER)", [])
+            .expect("create attached table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.db
+            .execute_sql(
+                &format!("ATTACH DATABASE '{}' AS other", attached.display()),
+                10,
+            )
+            .expect("attach on app connection");
+        app.tables = app.db.list_tables().expect("refresh tables");
+
+        app.sql.query = "SELECT other.".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+
+        let items = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("completion")
+            .items
+            .iter()
+            .map(|item| item.insert_text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(items.contains(&"other.other_table.other_id"));
+        assert!(!items.contains(&"other.id"));
+
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(attached);
     }
 
     fn temp_db_path(label: &str) -> PathBuf {
