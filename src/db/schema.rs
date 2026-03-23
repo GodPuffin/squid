@@ -87,10 +87,12 @@ impl Database {
 
     pub(crate) fn foreign_key_info(&self, table_name: &str) -> Result<Vec<ForeignKeyInfo>> {
         let pragma = table_pragma_sql(table_name, "foreign_key_list");
+        let source_schema = split_qualified_table_name(table_name).map(|(schema, _)| schema);
         let mut stmt = self.conn.prepare(&pragma)?;
         let rows = stmt.query_map([], |row| {
+            let target_table = row.get::<_, String>(2)?;
             Ok(ForeignKeyInfo {
-                target_table: row.get::<_, String>(2)?,
+                target_table: qualify_foreign_target_table(source_schema, &target_table),
                 from_column: row.get::<_, String>(3)?,
                 target_column: row.get::<_, String>(4)?,
             })
@@ -108,6 +110,16 @@ impl Database {
     }
 }
 
+fn qualify_foreign_target_table(source_schema: Option<&str>, target_table: &str) -> String {
+    if split_qualified_table_name(target_table).is_some() {
+        target_table.to_string()
+    } else if let Some(schema) = source_schema {
+        format!("{schema}.{target_table}")
+    } else {
+        target_table.to_string()
+    }
+}
+
 fn table_pragma_sql(table_name: &str, pragma_name: &str) -> String {
     if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
         format!(
@@ -118,6 +130,48 @@ fn table_pragma_sql(table_name: &str, pragma_name: &str) -> String {
         )
     } else {
         format!("PRAGMA {pragma_name}({})", quote_identifier(table_name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
+    use super::Database;
+
+    #[test]
+    fn foreign_key_info_preserves_schema_on_targets() {
+        let path = temp_db_path("fk-schema");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute_batch(
+            "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE orders(
+                 id INTEGER PRIMARY KEY,
+                 customer_id INTEGER NOT NULL REFERENCES customers(id)
+             );",
+        )
+        .expect("create schema");
+        drop(conn);
+
+        let db = Database::open(&path).expect("open db");
+        let foreign_keys = db.foreign_key_info("main.orders").expect("foreign keys");
+
+        assert_eq!(foreign_keys.len(), 1);
+        assert_eq!(foreign_keys[0].target_table, "main.customers");
+
+        let _ = fs::remove_file(path);
+    }
+
+    fn temp_db_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("squid-schema-{label}-{stamp}.sqlite"))
     }
 }
 

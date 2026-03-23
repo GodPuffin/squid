@@ -645,6 +645,7 @@ impl App {
         }
 
         for table in tables {
+            let insert_prefix = completion_insert_prefix(qualifier, &table.name);
             items.push(SqlCompletionItem {
                 label: table.name.clone(),
                 insert_text: table.name.clone(),
@@ -653,7 +654,7 @@ impl App {
             for column in self.db.list_columns(&table.name)? {
                 items.push(SqlCompletionItem {
                     label: format!("{}.{}", table.name, column),
-                    insert_text: format!("{qualifier}{column}"),
+                    insert_text: format!("{insert_prefix}{column}"),
                 });
             }
         }
@@ -779,6 +780,31 @@ fn completion_qualifier(prefix: &str) -> &str {
         .unwrap_or("")
 }
 
+fn completion_insert_prefix(typed_qualifier: &str, table_name: &str) -> String {
+    if typed_qualifier.is_empty() {
+        return String::new();
+    }
+
+    let qualifier = typed_qualifier.trim_end_matches('.');
+    if table_name.eq_ignore_ascii_case(qualifier)
+        || table_name
+            .rsplit('.')
+            .next()
+            .is_some_and(|bare_name| bare_name.eq_ignore_ascii_case(qualifier))
+    {
+        return typed_qualifier.to_string();
+    }
+
+    if table_name
+        .split_once('.')
+        .is_some_and(|(schema, _)| schema.eq_ignore_ascii_case(qualifier))
+    {
+        return format!("{table_name}.");
+    }
+
+    typed_qualifier.to_string()
+}
+
 fn completion_tables_for_qualifier<'a>(
     tables: &'a [crate::db::TableSummary],
     qualifier: &str,
@@ -826,10 +852,10 @@ mod tests {
     use rusqlite::Connection;
 
     use super::{
-        completion_prefix, completion_qualifier, completion_tables_for_qualifier,
-        line_col_from_index, move_vertical, sql_rows_summary,
+        completion_insert_prefix, completion_prefix, completion_qualifier,
+        completion_tables_for_qualifier, line_col_from_index, move_vertical, sql_rows_summary,
     };
-    use crate::app::App;
+    use crate::app::{Action, App};
 
     #[test]
     fn completion_prefix_reads_identifier_prefix() {
@@ -858,6 +884,19 @@ mod tests {
         assert_eq!(completion_qualifier("orders."), "orders.");
         assert_eq!(completion_qualifier("o.id"), "o.");
         assert_eq!(completion_qualifier("id"), "");
+    }
+
+    #[test]
+    fn completion_insert_prefix_expands_schema_qualifiers_to_full_table_names() {
+        assert_eq!(
+            completion_insert_prefix("main.", "main.orders"),
+            "main.orders."
+        );
+        assert_eq!(
+            completion_insert_prefix("orders.", "main.orders"),
+            "orders."
+        );
+        assert_eq!(completion_insert_prefix("o.", "main.orders"), "o.");
     }
 
     #[test]
@@ -995,6 +1034,32 @@ mod tests {
     }
 
     #[test]
+    fn sql_completion_inserts_full_table_after_schema_qualifier() {
+        let path = temp_db_path("schema-prefix-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT main.".to_string();
+        app.sql.cursor = app.sql.query.len();
+        app.sql_refresh_completion().expect("refresh completion");
+        let completion = app.sql.completion.as_mut().expect("completion");
+        completion.selected = completion
+            .items
+            .iter()
+            .position(|item| item.label == "main.orders.id")
+            .expect("main.orders.id completion");
+
+        app.sql_apply_completion();
+
+        assert_eq!(app.sql.query, "SELECT main.orders.id");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn sql_rows_summary_marks_truncation() {
         assert_eq!(sql_rows_summary(200, false), "Returned 200 row(s)");
         assert_eq!(
@@ -1066,6 +1131,49 @@ mod tests {
                 .and_then(|details| details.create_sql.as_deref()),
             Some("CREATE TABLE temp_demo(value TEXT)")
         );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn follow_detail_link_uses_schema_qualified_foreign_key_targets() {
+        let path = temp_db_path("detail-follow-schema");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute_batch(
+            "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE orders(
+                 id INTEGER PRIMARY KEY,
+                 customer_id INTEGER NOT NULL REFERENCES customers(id)
+             );
+             INSERT INTO customers(id, name) VALUES (1, 'Alice');
+             INSERT INTO orders(id, customer_id) VALUES (10, 1);",
+        )
+        .expect("create schema and data");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        let orders_index = app
+            .tables
+            .iter()
+            .position(|table| table.name == "main.orders")
+            .expect("orders table");
+        app.select_table_by_index(orders_index)
+            .expect("select orders table");
+        app.focus_content();
+        app.open_detail().expect("open detail");
+
+        let customer_field_index = app
+            .detail
+            .as_ref()
+            .expect("detail")
+            .fields
+            .iter()
+            .position(|field| field.column_name == "customer_id")
+            .expect("customer_id field");
+        app.detail_select_field(customer_field_index);
+        app.handle(Action::FollowLink).expect("follow link");
+
+        assert_eq!(app.selected_table_name(), Some("main.customers"));
 
         let _ = fs::remove_file(path);
     }
