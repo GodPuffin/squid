@@ -53,6 +53,7 @@ impl App {
 
     pub fn handle(&mut self, action: Action) -> Result<()> {
         if matches!(action, Action::SwitchToBrowse) {
+            self.sql.completion = None;
             self.mode = AppMode::Browse;
             return Ok(());
         }
@@ -481,6 +482,34 @@ mod tests {
 
         assert!(!should_quit);
         assert!(app.search.is_none());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn switching_to_browse_clears_sql_completion() {
+        let path = temp_db_path("switch-browse-clears-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY)", [])
+            .expect("create users");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.mode = crate::app::AppMode::Sql;
+        app.sql.completion = Some(crate::app::SqlCompletionState {
+            prefix_start: 0,
+            items: vec![crate::app::SqlCompletionItem {
+                label: "SELECT".to_string(),
+                insert_text: "SELECT".to_string(),
+            }],
+            selected: 0,
+        });
+
+        app.handle(crate::app::Action::SwitchToBrowse)
+            .expect("switch to browse");
+
+        assert_eq!(app.mode, crate::app::AppMode::Browse);
+        assert!(app.sql.completion.is_none());
 
         let _ = fs::remove_file(path);
     }

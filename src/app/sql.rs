@@ -883,7 +883,7 @@ fn completion_tables_for_qualifier<'a>(
                 .is_some_and(|name| name.eq_ignore_ascii_case(qualifier))
         })
         .collect::<Vec<_>>();
-    if bare_matches.len() == 1 {
+    if !bare_matches.is_empty() {
         bare_matches
     } else {
         tables.iter().collect()
@@ -1335,6 +1335,26 @@ mod tests {
 
         let alias_fallback = completion_tables_for_qualifier(&tables, "o.");
         assert_eq!(alias_fallback.len(), 3);
+    }
+
+    #[test]
+    fn completion_tables_for_ambiguous_bare_name_excludes_unrelated_tables() {
+        let tables = vec![
+            crate::db::TableSummary {
+                name: "main.orders".to_string(),
+            },
+            crate::db::TableSummary {
+                name: "other.orders".to_string(),
+            },
+            crate::db::TableSummary {
+                name: "main.customers".to_string(),
+            },
+        ];
+
+        let narrowed = completion_tables_for_qualifier(&tables, "orders.");
+
+        assert_eq!(narrowed.len(), 2);
+        assert!(narrowed.iter().all(|table| table.name.ends_with(".orders")));
     }
 
     #[test]
