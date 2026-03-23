@@ -77,6 +77,7 @@ impl App {
             | Action::OpenSearchAll
             | Action::FollowLink
             | Action::ExecuteSql
+            | Action::OpenCompletion
             | Action::NewLine => {}
         }
 

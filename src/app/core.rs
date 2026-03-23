@@ -109,6 +109,7 @@ impl App {
             | Action::PageUp
             | Action::PageDown
             | Action::ExecuteSql
+            | Action::OpenCompletion
             | Action::NewLine
             | Action::InputChar(_)
             | Action::Backspace
@@ -261,14 +262,34 @@ impl App {
     }
 
     pub(super) fn refresh_loaded_db_state(&mut self) -> Result<()> {
+        let selected_table_name = self.selected_table_name().map(str::to_owned);
+        let selected_table_index = self.selected_table;
         self.tables = self.db.list_tables()?;
-        if self.selected_table >= self.tables.len() {
-            self.selected_table = self.tables.len().saturating_sub(1);
-        }
+        self.selected_table = selected_table_name
+            .as_deref()
+            .and_then(|table_name| {
+                self.tables
+                    .iter()
+                    .position(|table| table.name == table_name)
+            })
+            .unwrap_or_else(|| selected_table_index.min(self.tables.len().saturating_sub(1)));
         self.detail = None;
         self.reset_content_position();
         self.refresh_preview()?;
         Ok(())
+    }
+
+    pub fn request_quit(&mut self) -> Result<bool> {
+        if self.detail.is_some()
+            || self.filter_modal.is_some()
+            || self.modal.is_some()
+            || self.search.is_some()
+            || self.sql.completion.is_some()
+        {
+            self.handle(Action::CloseModal)?;
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     pub(super) fn move_table_selection_up(&mut self) -> Result<()> {
@@ -411,4 +432,64 @@ impl App {
 
 fn split_table_name(table_name: &str) -> Option<(&str, &str)> {
     table_name.split_once('.')
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
+    use super::App;
+
+    #[test]
+    fn refresh_loaded_db_state_preserves_selected_table_name() {
+        let path = temp_db_path("refresh-selection");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY)", [])
+            .expect("create users");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        assert_eq!(app.selected_table_name(), Some("main.users"));
+
+        app.db
+            .execute_sql("CREATE TABLE addresses(id INTEGER PRIMARY KEY)", 10)
+            .expect("create addresses");
+        app.refresh_loaded_db_state().expect("refresh app state");
+
+        assert_eq!(app.selected_table_name(), Some("main.users"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn request_quit_closes_search_before_exiting() {
+        let path = temp_db_path("request-quit-search");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY)", [])
+            .expect("create users");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.open_search(crate::app::SearchScope::CurrentTable)
+            .expect("open search");
+
+        let should_quit = app.request_quit().expect("request quit");
+
+        assert!(!should_quit);
+        assert!(app.search.is_none());
+
+        let _ = fs::remove_file(path);
+    }
+
+    fn temp_db_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("squid-core-{label}-{stamp}.sqlite"))
+    }
 }

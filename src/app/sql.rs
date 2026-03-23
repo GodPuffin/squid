@@ -212,6 +212,7 @@ impl App {
             Action::Delete => self.sql_delete()?,
             Action::NewLine => self.sql_newline()?,
             Action::ExecuteSql => self.sql_execute()?,
+            Action::OpenCompletion => self.sql_open_completion()?,
             Action::Confirm => self.sql_confirm()?,
             Action::Clear => self.sql_clear(),
             Action::Reload => self.reload()?,
@@ -481,6 +482,13 @@ impl App {
         Ok(())
     }
 
+    fn sql_open_completion(&mut self) -> Result<()> {
+        if self.sql.focus != SqlPane::Editor {
+            return Ok(());
+        }
+        self.sql_refresh_completion_with_empty_prefix(true)
+    }
+
     fn sql_clear(&mut self) {
         match self.sql.focus {
             SqlPane::Editor => {
@@ -596,12 +604,17 @@ impl App {
     }
 
     fn sql_refresh_completion(&mut self) -> Result<()> {
+        self.sql_refresh_completion_with_empty_prefix(false)
+    }
+
+    fn sql_refresh_completion_with_empty_prefix(&mut self, allow_empty_prefix: bool) -> Result<()> {
         if self.sql.focus != SqlPane::Editor {
+            self.sql.completion = None;
             return Ok(());
         }
 
         let (prefix_start, prefix) = completion_prefix(&self.sql.query, self.sql.cursor);
-        if prefix.is_empty() {
+        if prefix.is_empty() && !allow_empty_prefix {
             self.sql.completion = None;
             return Ok(());
         }
@@ -1061,6 +1074,39 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(items.contains(&"name"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_open_completion_shows_suggestions_without_identifier_prefix() {
+        let path = temp_db_path("manual-completion");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
+            .expect("create table");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.mode = crate::app::AppMode::Sql;
+        app.sql.query = "SELECT ".to_string();
+        app.sql.cursor = app.sql.query.len();
+
+        app.handle(Action::OpenCompletion).expect("open completion");
+
+        let completion = app.sql.completion.as_ref().expect("completion");
+        assert_eq!(completion.prefix_start, app.sql.cursor);
+        assert!(!completion.items.is_empty());
+
+        let labels = completion
+            .items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(
+            labels.iter().any(|label| !label.trim().is_empty()),
+            "manual completion should surface at least one visible suggestion"
+        );
 
         let _ = fs::remove_file(path);
     }

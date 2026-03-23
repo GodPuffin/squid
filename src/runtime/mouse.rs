@@ -37,7 +37,7 @@ pub fn handle_mouse_event(
             return Ok(false);
         }
         if contains(layout.header_tabs.quit, column, row) {
-            return Ok(app.modal.is_none());
+            return app.request_quit();
         }
     }
 

@@ -1,10 +1,10 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{Action, App, AppMode, FilterPane, SqlPane};
 
 pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     if app.mode == AppMode::Sql {
-        return sql_action(app, key.code);
+        return sql_action(app, key);
     }
 
     if app.detail.is_some() {
@@ -116,13 +116,16 @@ fn root_action(key: KeyCode) -> Action {
     }
 }
 
-fn sql_action(app: &App, key: KeyCode) -> Action {
-    match key {
+fn sql_action(app: &App, key: KeyEvent) -> Action {
+    match key.code {
         KeyCode::Char('1') if app.sql_focus() != SqlPane::Editor => Action::SwitchToBrowse,
         KeyCode::Char('2') if app.sql_focus() != SqlPane::Editor => Action::SwitchToSql,
         KeyCode::BackTab => Action::ReverseFocus,
         KeyCode::Char('q') if app.sql_focus() != SqlPane::Editor => Action::Quit,
         KeyCode::Esc => Action::CloseModal,
+        KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Action::OpenCompletion
+        }
         KeyCode::Tab => Action::ToggleFocus,
         KeyCode::F(5) => Action::ExecuteSql,
         KeyCode::Up => Action::MoveUp,
@@ -148,7 +151,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crossterm::event::{KeyCode, KeyEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use rusqlite::Connection;
 
     use super::action_for_key;
@@ -218,6 +221,20 @@ mod tests {
         assert_eq!(
             action_for_key(&app, KeyEvent::from(KeyCode::Char('1'))),
             Action::InputChar('1')
+        );
+    }
+
+    #[test]
+    fn sql_ctrl_space_opens_completion() {
+        let mut app = test_app("sql-open-completion");
+        app.mode = AppMode::Sql;
+
+        assert_eq!(
+            action_for_key(
+                &app,
+                KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)
+            ),
+            Action::OpenCompletion
         );
     }
 
