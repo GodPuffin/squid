@@ -4,8 +4,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::app::{App, AppMode};
 use super::LayoutInfo;
+use crate::app::{App, AppMode};
 
 pub fn render_header(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let header = Block::default().borders(Borders::ALL).title("Database");

@@ -100,7 +100,10 @@ mod tests {
     fn split_lines_preserves_trailing_empty_line() {
         let query = "SELECT\n";
 
-        assert_eq!(split_lines(query), vec!["SELECT".to_string(), String::new()]);
+        assert_eq!(
+            split_lines(query),
+            vec!["SELECT".to_string(), String::new()]
+        );
         assert_eq!(line_length(query, 1), 0);
     }
 }
