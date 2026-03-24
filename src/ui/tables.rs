@@ -32,7 +32,7 @@ pub fn render_tables(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) 
             "Tables",
             app.tables
                 .iter()
-                .map(|table| ListItem::new(table.name.clone()))
+                .map(|table| ListItem::new(app.display_table_name(&table.name)))
                 .collect(),
         )
     };

@@ -1,8 +1,8 @@
 # squid 🦑
 
-Read-only SQLite viewer for the terminal.
+SQLite viewer and query runner for the terminal.
 
-Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, sort, filter, and view full row details without writing to the database.
+Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, sort, filter, view full row details, and switch into a writable SQL mode with syntax highlighting, history, completions, and result grids.
 
 ## Install
 

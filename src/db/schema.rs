@@ -3,20 +3,41 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, params_from_iter};
 
 use super::{ColumnInfo, Database, ForeignKeyInfo, TableDetails};
-use crate::db::query::quote_identifier;
+use crate::db::query::{quote_identifier, quote_table_name, split_qualified_table_name};
 
 impl Database {
     pub fn table_details(&self, table_name: &str) -> Result<TableDetails> {
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let columns = self.column_info(table_name)?;
         let total_rows = count_rows(&self.conn, &safe_table_name, "", &[])?;
-        let create_sql = self.conn.query_row(
-            "SELECT sql
-             FROM sqlite_master
-             WHERE type = 'table' AND name = ?1",
-            [table_name],
-            |row| row.get::<_, Option<String>>(0),
-        )?;
+        let create_sql = if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
+            let master_table = schema_catalog_table(schema);
+            let sql = format!(
+                "SELECT sql
+                 FROM {master_table}
+                 WHERE type = 'table' AND name = ?1
+                 LIMIT 1"
+            );
+            self.conn
+                .query_row(&sql, [bare_name], |row| row.get::<_, Option<String>>(0))?
+        } else {
+            self.conn.query_row(
+                "SELECT sql
+                 FROM (
+                     SELECT sql, 0 AS priority
+                     FROM sqlite_temp_master
+                     WHERE type = 'table' AND name = ?1
+                     UNION ALL
+                     SELECT sql, 1 AS priority
+                     FROM sqlite_master
+                     WHERE type = 'table' AND name = ?1
+                 )
+                 ORDER BY priority
+                 LIMIT 1",
+                [table_name],
+                |row| row.get::<_, Option<String>>(0),
+            )?
+        };
 
         Ok(TableDetails {
             create_sql,
@@ -26,7 +47,7 @@ impl Database {
     }
 
     pub(crate) fn list_columns(&self, table_name: &str) -> Result<Vec<String>> {
-        let pragma = format!("PRAGMA table_info({})", quote_identifier(table_name));
+        let pragma = table_pragma_sql(table_name, "table_info");
         let mut stmt = self.conn.prepare(&pragma)?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
 
@@ -39,7 +60,7 @@ impl Database {
     }
 
     pub(crate) fn column_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>> {
-        let pragma = format!("PRAGMA table_info({})", quote_identifier(table_name));
+        let pragma = table_pragma_sql(table_name, "table_info");
         let mut stmt = self.conn.prepare(&pragma)?;
         let rows = stmt.query_map([], |row| {
             let not_null = row.get::<_, i64>(3)? != 0;
@@ -62,11 +83,13 @@ impl Database {
     }
 
     pub(crate) fn foreign_key_info(&self, table_name: &str) -> Result<Vec<ForeignKeyInfo>> {
-        let pragma = format!("PRAGMA foreign_key_list({})", quote_identifier(table_name));
+        let pragma = table_pragma_sql(table_name, "foreign_key_list");
+        let source_schema = split_qualified_table_name(table_name).map(|(schema, _)| schema);
         let mut stmt = self.conn.prepare(&pragma)?;
         let rows = stmt.query_map([], |row| {
+            let target_table = row.get::<_, String>(2)?;
             Ok(ForeignKeyInfo {
-                target_table: row.get::<_, String>(2)?,
+                target_table: qualify_foreign_target_table(source_schema, &target_table),
                 from_column: row.get::<_, String>(3)?,
                 target_column: row.get::<_, String>(4)?,
             })
@@ -81,6 +104,114 @@ impl Database {
         }
 
         Ok(foreign_keys)
+    }
+}
+
+fn qualify_foreign_target_table(source_schema: Option<&str>, target_table: &str) -> String {
+    if split_qualified_table_name(target_table).is_some() {
+        target_table.to_string()
+    } else if let Some(schema) = source_schema {
+        format!("{schema}.{target_table}")
+    } else {
+        target_table.to_string()
+    }
+}
+
+pub(crate) fn schema_catalog_table(schema_name: &str) -> String {
+    if schema_name == "temp" {
+        "sqlite_temp_master".to_string()
+    } else {
+        format!("{}.sqlite_master", quote_identifier(schema_name))
+    }
+}
+
+fn table_pragma_sql(table_name: &str, pragma_name: &str) -> String {
+    if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
+        format!(
+            "PRAGMA {}.{}({})",
+            quote_identifier(schema),
+            pragma_name,
+            quote_identifier(bare_name)
+        )
+    } else {
+        format!("PRAGMA {pragma_name}({})", quote_identifier(table_name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
+    use super::Database;
+
+    #[test]
+    fn foreign_key_info_preserves_schema_on_targets() {
+        let path = temp_db_path("fk-schema");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute_batch(
+            "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE orders(
+                 id INTEGER PRIMARY KEY,
+                 customer_id INTEGER NOT NULL REFERENCES customers(id)
+             );",
+        )
+        .expect("create schema");
+        drop(conn);
+
+        let db = Database::open(&path).expect("open db");
+        let foreign_keys = db.foreign_key_info("main.orders").expect("foreign keys");
+
+        assert_eq!(foreign_keys.len(), 1);
+        assert_eq!(foreign_keys[0].target_table, "main.customers");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn table_details_reads_create_sql_from_attached_schema() {
+        let main_path = temp_db_path("attached-main");
+        let attached_path = temp_db_path("attached-other");
+
+        let conn = Connection::open(&main_path).expect("create main db");
+        conn.execute(
+            "ATTACH DATABASE ?1 AS other",
+            [attached_path.to_string_lossy().into_owned()],
+        )
+        .expect("attach db");
+        conn.execute("CREATE TABLE other.demo(id INTEGER PRIMARY KEY)", [])
+            .expect("create attached table");
+        drop(conn);
+
+        let db = Database::open(&main_path).expect("open db");
+        db.conn
+            .execute(
+                "ATTACH DATABASE ?1 AS other",
+                [attached_path.to_string_lossy().into_owned()],
+            )
+            .expect("attach db");
+        let details = db
+            .table_details("other.demo")
+            .expect("attached table details");
+
+        assert_eq!(
+            details.create_sql.as_deref(),
+            Some("CREATE TABLE demo(id INTEGER PRIMARY KEY)")
+        );
+
+        let _ = fs::remove_file(main_path);
+        let _ = fs::remove_file(attached_path);
+    }
+
+    fn temp_db_path(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("squid-schema-{label}-{stamp}.sqlite"))
     }
 }
 

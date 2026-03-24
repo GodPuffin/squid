@@ -16,7 +16,7 @@ impl Database {
         limit: usize,
         offset: usize,
     ) -> Result<RowPreview> {
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let columns = if visible_columns.is_empty() {
             self.list_columns(table_name)?
         } else {
@@ -87,7 +87,7 @@ impl Database {
             return Ok(None);
         }
 
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let select_list = columns
             .iter()
             .map(|column| quote_identifier(column))
@@ -158,7 +158,7 @@ impl Database {
         sort_clauses: &[SortClause],
         filter_clauses: &[FilterClause],
     ) -> Result<Option<usize>> {
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let safe_column_name = quote_identifier(column_name);
         let order_by = build_order_by_or_rowid(sort_clauses);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
@@ -195,7 +195,7 @@ impl Database {
         sort_clauses: &[SortClause],
         filter_clauses: &[FilterClause],
     ) -> Result<Option<usize>> {
-        let safe_table_name = quote_identifier(table_name);
+        let safe_table_name = quote_table_name(table_name);
         let order_by = build_order_by_or_rowid(sort_clauses);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
@@ -227,6 +227,18 @@ impl Database {
 
 pub(crate) fn quote_identifier(value: &str) -> String {
     format!("\"{}\"", value.replace('\"', "\"\""))
+}
+
+pub(crate) fn quote_table_name(value: &str) -> String {
+    if let Some((schema, table)) = split_qualified_table_name(value) {
+        format!("{}.{}", quote_identifier(schema), quote_identifier(table))
+    } else {
+        quote_identifier(value)
+    }
+}
+
+pub(crate) fn split_qualified_table_name(value: &str) -> Option<(&str, &str)> {
+    value.split_once('.')
 }
 
 pub(crate) fn build_filter_where(filter_clauses: &[FilterClause]) -> (String, Vec<Value>) {
