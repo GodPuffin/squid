@@ -385,3 +385,6 @@ fn clear_row_click_state(state: &mut MouseState) {
     state.last_home_click = None;
     state.last_table_row_click = None;
 }
+
+#[cfg(test)]
+mod tests;

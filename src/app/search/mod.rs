@@ -232,3 +232,6 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

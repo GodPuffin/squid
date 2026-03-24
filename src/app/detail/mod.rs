@@ -231,3 +231,6 @@ fn wrapped_line_count(value: &str, width: usize) -> usize {
 
     if count == 0 { 1 } else { count }
 }
+
+#[cfg(test)]
+mod tests;

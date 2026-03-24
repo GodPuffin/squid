@@ -346,3 +346,6 @@ fn format_create_sql(sql: &str) -> Vec<String> {
         lines
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -166,3 +166,6 @@ fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
 
     positions
 }
+
+#[cfg(test)]
+mod tests;

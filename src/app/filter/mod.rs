@@ -468,3 +468,6 @@ fn filter_mode_name(mode: FilterMode) -> &'static str {
 fn filter_mode_uses_input(mode: FilterMode) -> bool {
     !matches!(mode, FilterMode::IsTrue | FilterMode::IsFalse)
 }
+
+#[cfg(test)]
+mod tests;

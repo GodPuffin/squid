@@ -9,3 +9,6 @@ pub(crate) fn format_value(value: ValueRef<'_>) -> String {
         ValueRef::Blob(v) => format!("<{} bytes>", v.len()),
     }
 }
+
+#[cfg(test)]
+mod tests;
