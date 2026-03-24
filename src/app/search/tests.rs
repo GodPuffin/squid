@@ -103,7 +103,10 @@ fn current_table_search_move_clamps_at_bounds() {
         app.handle_search(Action::MoveDown).unwrap();
     }
     let search = app.search.as_ref().unwrap();
-    assert_eq!(search.selected_result, search.results.len().saturating_sub(1));
+    assert_eq!(
+        search.selected_result,
+        search.results.len().saturating_sub(1)
+    );
 }
 
 fn app_with_search_data(label: &str) -> App {

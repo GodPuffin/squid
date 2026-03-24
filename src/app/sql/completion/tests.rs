@@ -407,8 +407,9 @@ fn sql_completion_preserves_snippets_with_keyword_labels() {
 
 #[test]
 fn sql_aliases_map_aliases_to_their_tables() {
-    let aliases =
-        sql_aliases_before_cursor("SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id");
+    let aliases = sql_aliases_before_cursor(
+        "SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id",
+    );
 
     assert_eq!(aliases.get("o"), Some(&"main.orders".to_string()));
     assert_eq!(aliases.get("u"), Some(&"main.users".to_string()));

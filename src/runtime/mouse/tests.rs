@@ -14,9 +14,21 @@ use super::{MouseState, contains, handle_mouse_event, is_double_click};
 #[test]
 fn is_double_click_requires_same_index_within_threshold() {
     let now = Instant::now();
-    assert!(is_double_click(Some((1, now)), 1, now + Duration::from_millis(400)));
-    assert!(!is_double_click(Some((1, now)), 2, now + Duration::from_millis(400)));
-    assert!(!is_double_click(Some((1, now)), 1, now + Duration::from_millis(700)));
+    assert!(is_double_click(
+        Some((1, now)),
+        1,
+        now + Duration::from_millis(400)
+    ));
+    assert!(!is_double_click(
+        Some((1, now)),
+        2,
+        now + Duration::from_millis(400)
+    ));
+    assert!(!is_double_click(
+        Some((1, now)),
+        1,
+        now + Duration::from_millis(700)
+    ));
 }
 
 #[test]

@@ -1,6 +1,9 @@
 #[test]
 fn fuzzy_match_positions_returns_ordered_character_matches() {
-    assert_eq!(super::fuzzy_match_positions("Alphabet", "abt"), vec![0, 5, 7]);
+    assert_eq!(
+        super::fuzzy_match_positions("Alphabet", "abt"),
+        vec![0, 5, 7]
+    );
 }
 
 #[test]

@@ -203,8 +203,11 @@ fn execute_sql_marks_truncated_row_results() {
     conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
         .expect("create table");
     for idx in 0..205 {
-        conn.execute("INSERT INTO demo(name) VALUES (?1)", [format!("name-{idx}")])
-            .expect("insert row");
+        conn.execute(
+            "INSERT INTO demo(name) VALUES (?1)",
+            [format!("name-{idx}")],
+        )
+        .expect("insert row");
     }
     drop(conn);
 

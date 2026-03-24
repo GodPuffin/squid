@@ -119,10 +119,8 @@ fn record_logic_moves_existing_to_front_and_trims() {
 fn recent_paths_match_plain_paths_and_file_uri_aliases() {
     let path = std::env::temp_dir().join("squid-recent-match.db");
     let raw_path = path.clone();
-    let file_uri = std::path::PathBuf::from(format!(
-        "file:{}?mode=ro",
-        path_to_sqlite_uri_path(&path)
-    ));
+    let file_uri =
+        std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
     let localhost_uri = std::path::PathBuf::from(format!(
         "file://localhost{}?mode=ro",
         path_to_sqlite_uri_path(&path)
@@ -190,10 +188,7 @@ fn recent_path_is_available_for_sqlite_file_uris() {
     ));
     std::fs::write(&path, b"sqlite").unwrap();
 
-    let uri = std::path::PathBuf::from(format!(
-        "file:{}?mode=ro",
-        path_to_sqlite_uri_path(&path)
-    ));
+    let uri = std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
     assert!(recent_path_is_available(&uri));
 
     cleanup(&path);

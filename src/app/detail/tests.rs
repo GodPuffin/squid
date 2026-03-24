@@ -26,19 +26,23 @@ fn open_detail_builds_foreign_targets_and_skips_null_links() {
     app.open_detail().unwrap();
 
     let detail = app.detail.as_ref().unwrap();
-    assert!(detail
-        .fields
-        .iter()
-        .any(|field| field.column_name == "customer_id" && field.foreign_target.is_some()));
+    assert!(
+        detail
+            .fields
+            .iter()
+            .any(|field| field.column_name == "customer_id" && field.foreign_target.is_some())
+    );
 
     app.detail = None;
     app.selected_row = 1;
     app.open_detail().unwrap();
     let detail = app.detail.as_ref().unwrap();
-    assert!(detail
-        .fields
-        .iter()
-        .any(|field| field.column_name == "customer_id" && field.foreign_target.is_none()));
+    assert!(
+        detail
+            .fields
+            .iter()
+            .any(|field| field.column_name == "customer_id" && field.foreign_target.is_none())
+    );
 }
 
 #[test]
