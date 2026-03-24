@@ -49,8 +49,11 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 let action = input::action_for_key(&app, key);
-                if matches!(action, Action::Quit) && app.modal.is_none() {
-                    break;
+                if matches!(action, Action::Quit) {
+                    if app.request_quit()? {
+                        break;
+                    }
+                    continue;
                 }
                 app.handle(action)?;
             }
