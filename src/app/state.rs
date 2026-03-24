@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::db::{FilterMode, SearchHit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -67,6 +69,7 @@ pub struct SqlState {
     pub result_height: usize,
     pub completion: Option<SqlCompletionState>,
     pub status: String,
+    pub column_cache: HashMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug)]

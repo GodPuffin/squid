@@ -44,6 +44,7 @@ impl App {
                 result_height: 8,
                 completion: None,
                 status: "SQL mode ready".to_string(),
+                column_cache: std::collections::HashMap::new(),
             },
             configs: std::collections::HashMap::new(),
         };
@@ -264,6 +265,7 @@ impl App {
         let selected_table_name = self.selected_table_name().map(str::to_owned);
         let selected_table_index = self.selected_table;
         self.tables = self.db.list_tables()?;
+        self.sql.column_cache.clear();
         self.selected_table = selected_table_name
             .as_deref()
             .and_then(|table_name| {

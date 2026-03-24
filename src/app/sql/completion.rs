@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 
 use super::cursor::previous_boundary;
 use super::{App, SqlCompletionItem, SqlCompletionState, SqlPane};
+use crate::db::TableSummary;
 
 const SQL_KEYWORDS: &[&str] = &[
     "SELECT",
@@ -44,6 +47,7 @@ impl App {
             self.sql.completion = None;
             return Ok(());
         }
+
         let items = self.sql_completion_candidates(&prefix)?;
         self.sql.completion = (!items.is_empty()).then_some(SqlCompletionState {
             prefix_start,
@@ -70,10 +74,17 @@ impl App {
         self.ensure_sql_viewport();
     }
 
-    pub(super) fn sql_completion_candidates(&self, prefix: &str) -> Result<Vec<SqlCompletionItem>> {
+    pub(super) fn sql_completion_candidates(
+        &mut self,
+        prefix: &str,
+    ) -> Result<Vec<SqlCompletionItem>> {
         let prefix_lower = prefix.to_lowercase();
         let qualifier = completion_qualifier(prefix);
-        let tables = completion_tables_for_qualifier(&self.tables, qualifier);
+        let aliases = sql_aliases_before_cursor(&self.sql.query);
+        let tables = completion_tables_for_qualifier(&self.tables, qualifier, &aliases)
+            .into_iter()
+            .map(|table| table.name.clone())
+            .collect::<Vec<_>>();
         let use_full_table_prefix = has_ambiguous_bare_table_match(&self.tables, qualifier);
         let mut items = Vec::new();
 
@@ -91,39 +102,76 @@ impl App {
             });
         }
 
-        for table in tables {
-            let table_label = completion_table_label(self, &table.name, qualifier);
-            let table_insert_text = completion_table_insert_text(self, &table.name, qualifier);
-            let insert_prefix =
-                completion_insert_prefix(qualifier, &table.name, use_full_table_prefix);
+        for table_name in &tables {
+            let table_label = completion_table_label(self, table_name, qualifier);
+            let table_insert_text = completion_table_insert_text(self, table_name, qualifier);
             items.push(SqlCompletionItem {
-                label: table_label.clone(),
+                label: table_label,
                 insert_text: table_insert_text,
             });
+        }
 
-            for column in self.db.list_columns(&table.name)? {
-                items.push(SqlCompletionItem {
+        let mut matches = filter_completion_items(items, &prefix_lower);
+        if qualifier.is_empty() && matches.len() >= 6 {
+            return Ok(matches);
+        }
+
+        let mut column_items = Vec::new();
+        for table_name in tables {
+            let table_label = completion_table_label(self, &table_name, qualifier);
+            let insert_prefix =
+                completion_insert_prefix(qualifier, &table_name, use_full_table_prefix);
+            for column in self.sql_list_columns_cached(&table_name)? {
+                column_items.push(SqlCompletionItem {
                     label: format!("{table_label}.{}", column),
                     insert_text: format!("{insert_prefix}{column}"),
                 });
             }
         }
 
-        items.sort_by(|left, right| {
+        matches.extend(filter_completion_items(column_items, &prefix_lower));
+        matches.sort_by(|left, right| {
             left.label
                 .cmp(&right.label)
                 .then_with(|| left.insert_text.cmp(&right.insert_text))
         });
-        items.dedup_by(|left, right| {
+        matches.dedup_by(|left, right| {
             left.label.eq_ignore_ascii_case(&right.label) && left.insert_text == right.insert_text
         });
-
-        Ok(items
-            .into_iter()
-            .filter(|item| completion_matches(&prefix_lower, item))
-            .take(6)
-            .collect())
+        matches.truncate(6);
+        Ok(matches)
     }
+
+    fn sql_list_columns_cached(&mut self, table_name: &str) -> Result<Vec<String>> {
+        if let Some(columns) = self.sql.column_cache.get(table_name) {
+            return Ok(columns.clone());
+        }
+
+        let columns = self.db.list_columns(table_name)?;
+        self.sql
+            .column_cache
+            .insert(table_name.to_string(), columns.clone());
+        Ok(columns)
+    }
+}
+
+fn filter_completion_items(
+    mut items: Vec<SqlCompletionItem>,
+    prefix_lower: &str,
+) -> Vec<SqlCompletionItem> {
+    items.sort_by(|left, right| {
+        left.label
+            .cmp(&right.label)
+            .then_with(|| left.insert_text.cmp(&right.insert_text))
+    });
+    items.dedup_by(|left, right| {
+        left.label.eq_ignore_ascii_case(&right.label) && left.insert_text == right.insert_text
+    });
+    items
+        .into_iter()
+        .filter(|item| completion_matches(prefix_lower, item))
+        .take(6)
+        .collect()
 }
 
 fn completion_matches(prefix_lower: &str, item: &SqlCompletionItem) -> bool {
@@ -213,15 +261,122 @@ pub(super) fn completion_insert_prefix(
     typed_qualifier.to_string()
 }
 
+fn sql_aliases_before_cursor(query: &str) -> HashMap<String, String> {
+    let tokens = sql_tokens(query);
+    let mut aliases = HashMap::new();
+    let mut index = 0;
+
+    while index < tokens.len() {
+        let is_source_keyword = identifier_of(tokens.get(index))
+            .map(|token| matches!(token.to_ascii_uppercase().as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO"))
+            .unwrap_or(false);
+        if !is_source_keyword {
+            index += 1;
+            continue;
+        }
+
+        let Some((table_name, next_index)) = parse_table_reference(&tokens, index + 1) else {
+            index += 1;
+            continue;
+        };
+
+        index = next_index;
+        let has_as = identifier_of(tokens.get(index))
+            .map(|token| token.eq_ignore_ascii_case("AS"))
+            .unwrap_or(false);
+        if has_as {
+            index += 1;
+        }
+
+        if let Some(alias) = identifier_of(tokens.get(index)) {
+            if !is_clause_keyword(alias) {
+                aliases.insert(alias.to_ascii_lowercase(), table_name);
+                index += 1;
+            }
+        }
+    }
+
+    aliases
+}
+
+fn sql_tokens(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+
+    for ch in query.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            current.push(ch);
+            continue;
+        }
+
+        if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+
+        if !ch.is_whitespace() && matches!(ch, '.' | ',' | '(' | ')') {
+            tokens.push(ch.to_string());
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
+fn parse_table_reference(tokens: &[String], start: usize) -> Option<(String, usize)> {
+    let first = identifier_of(tokens.get(start))?;
+    let mut table_name = first.to_string();
+    let mut index = start + 1;
+
+    while index + 1 < tokens.len() && tokens[index] == "." {
+        let next = identifier_of(tokens.get(index + 1))?;
+        table_name.push('.');
+        table_name.push_str(next);
+        index += 2;
+    }
+
+    Some((table_name, index))
+}
+
+fn identifier_of(token: Option<&String>) -> Option<&str> {
+    token
+        .map(String::as_str)
+        .filter(|token| token.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_'))
+}
+
+fn is_clause_keyword(token: &str) -> bool {
+    matches!(
+        token.to_ascii_uppercase().as_str(),
+        "ON" | "WHERE" | "GROUP" | "ORDER" | "LIMIT" | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "JOIN"
+    )
+}
+
 pub(super) fn completion_tables_for_qualifier<'a>(
-    tables: &'a [crate::db::TableSummary],
+    tables: &'a [TableSummary],
     qualifier: &str,
-) -> Vec<&'a crate::db::TableSummary> {
+    aliases: &HashMap<String, String>,
+) -> Vec<&'a TableSummary> {
     if qualifier.is_empty() {
         return tables.iter().collect();
     }
 
     let qualifier = qualifier.trim_end_matches('.');
+    if let Some(target_table) = aliases.get(&qualifier.to_ascii_lowercase()) {
+        return tables
+            .iter()
+            .filter(|table| {
+                table.name.eq_ignore_ascii_case(target_table)
+                    || table
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(target_table))
+            })
+            .collect();
+    }
+
     let exact_matches = tables
         .iter()
         .filter(|table| table.name.eq_ignore_ascii_case(qualifier))
@@ -254,13 +409,13 @@ pub(super) fn completion_tables_for_qualifier<'a>(
         })
         .collect::<Vec<_>>();
     if !bare_matches.is_empty() {
-        bare_matches
-    } else {
-        tables.iter().collect()
+        return bare_matches;
     }
+
+    Vec::new()
 }
 
-fn has_ambiguous_bare_table_match(tables: &[crate::db::TableSummary], qualifier: &str) -> bool {
+fn has_ambiguous_bare_table_match(tables: &[TableSummary], qualifier: &str) -> bool {
     let qualifier = qualifier.trim_end_matches('.');
     if qualifier.is_empty() || qualifier.contains('.') {
         return false;
@@ -286,6 +441,7 @@ fn is_completion_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -295,6 +451,7 @@ mod tests {
     use super::{
         completion_insert_prefix, completion_prefix, completion_qualifier,
         completion_table_insert_text, completion_table_label, completion_tables_for_qualifier,
+        sql_aliases_before_cursor,
     };
     use crate::app::App;
 
@@ -405,8 +562,8 @@ mod tests {
         drop(conn);
 
         let mut app = App::load(path.clone()).expect("load app");
-        app.sql.query = "SELECT o.".to_string();
-        app.sql.cursor = app.sql.query.len();
+        app.sql.query = "SELECT o. FROM orders o".to_string();
+        app.sql.cursor = "SELECT o.".len();
         app.sql_refresh_completion().expect("refresh completion");
 
         let items = app
@@ -421,6 +578,37 @@ mod tests {
 
         assert!(items.contains(&"o.id"));
         assert!(items.contains(&"o.name"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sql_completion_does_not_offer_alias_columns_from_other_tables() {
+        let path = temp_db_path("alias-filter");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY)", [])
+            .expect("create orders");
+        conn.execute("CREATE TABLE users(name TEXT)", [])
+            .expect("create users");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.sql.query = "SELECT u. FROM orders o JOIN users u ON u.rowid = o.rowid".to_string();
+        app.sql.cursor = "SELECT u.".len();
+        app.sql_refresh_completion().expect("refresh completion");
+
+        let items = app
+            .sql
+            .completion
+            .as_ref()
+            .expect("completion")
+            .items
+            .iter()
+            .map(|item| item.insert_text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(items.contains(&"u.name"));
+        assert!(!items.contains(&"u.id"));
 
         let _ = fs::remove_file(path);
     }
@@ -492,17 +680,18 @@ mod tests {
                 name: "temp.scratch".to_string(),
             },
         ];
+        let aliases = HashMap::new();
 
-        let narrowed = completion_tables_for_qualifier(&tables, "main.orders.");
+        let narrowed = completion_tables_for_qualifier(&tables, "main.orders.", &aliases);
         assert_eq!(narrowed.len(), 1);
         assert_eq!(narrowed[0].name, "main.orders");
 
-        let schema_only = completion_tables_for_qualifier(&tables, "temp.");
+        let schema_only = completion_tables_for_qualifier(&tables, "temp.", &aliases);
         assert_eq!(schema_only.len(), 1);
         assert_eq!(schema_only[0].name, "temp.scratch");
 
-        let alias_fallback = completion_tables_for_qualifier(&tables, "o.");
-        assert_eq!(alias_fallback.len(), 3);
+        let alias_fallback = completion_tables_for_qualifier(&tables, "o.", &aliases);
+        assert!(alias_fallback.is_empty());
     }
 
     #[test]
@@ -519,7 +708,7 @@ mod tests {
             },
         ];
 
-        let narrowed = completion_tables_for_qualifier(&tables, "orders.");
+        let narrowed = completion_tables_for_qualifier(&tables, "orders.", &HashMap::new());
 
         assert_eq!(narrowed.len(), 2);
         assert!(narrowed.iter().all(|table| table.name.ends_with(".orders")));
@@ -550,6 +739,7 @@ mod tests {
             )
             .expect("attach on app connection");
         app.tables = app.db.list_tables().expect("refresh tables");
+        app.sql.column_cache.clear();
 
         app.sql.query = "SELECT other.".to_string();
         app.sql.cursor = app.sql.query.len();
@@ -597,6 +787,7 @@ mod tests {
             )
             .expect("attach on app connection");
         app.tables = app.db.list_tables().expect("refresh tables");
+        app.sql.column_cache.clear();
         app.sql.query = "SELECT orders.".to_string();
         app.sql.cursor = app.sql.query.len();
         app.sql_refresh_completion().expect("refresh completion");
@@ -620,7 +811,7 @@ mod tests {
 
     #[test]
     fn sql_completion_preserves_snippets_with_keyword_labels() {
-        let app = test_app_with_tables(
+        let mut app = test_app_with_tables(
             "snippet-labels",
             &["CREATE TABLE orders(id INTEGER PRIMARY KEY)"],
         );
@@ -641,6 +832,15 @@ mod tests {
                 .any(|item| item.label == "INSERT INTO" && item.insert_text == "INSERT INTO"),
             "expected keyword completion for INSERT INTO"
         );
+    }
+
+    #[test]
+    fn sql_aliases_map_aliases_to_their_tables() {
+        let aliases =
+            sql_aliases_before_cursor("SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id");
+
+        assert_eq!(aliases.get("o"), Some(&"main.orders".to_string()));
+        assert_eq!(aliases.get("u"), Some(&"main.users".to_string()));
     }
 
     fn temp_db_path(label: &str) -> PathBuf {
