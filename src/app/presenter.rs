@@ -2,16 +2,19 @@ use sqlformat::{FormatOptions, QueryParams};
 
 use crate::db::FilterMode;
 
-use super::{App, FilterPane, ModalPane, SearchScope};
+use super::{App, AppMode, FilterPane, ModalPane, SearchScope};
 
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
         let Some(details) = &self.details else {
             return vec!["No schema details available".to_string()];
         };
+        let table_label = self
+            .selected_table_label()
+            .unwrap_or_else(|| "-".to_string());
 
         let mut lines = vec![
-            format!("Table: {}", self.selected_table_name().unwrap_or("-")),
+            format!("Table: {table_label}"),
             format!("Rows: {}", details.total_rows),
             String::new(),
             format!("Columns ({})", details.columns.len()),
@@ -41,6 +44,9 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
+        if self.mode == AppMode::Sql {
+            return "1 browse  2 sql  Tab cycle panes  F5 or click Run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q or click Quit outside editor".to_string();
+        }
         if self.detail.is_some() {
             "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
         } else if self.filter_modal.is_some() {
@@ -66,12 +72,14 @@ impl App {
     }
 
     pub fn content_title(&self) -> String {
-        let table = self.selected_table_name().unwrap_or("Rows");
+        let table = self
+            .selected_table_label()
+            .unwrap_or_else(|| "Rows".to_string());
         let hidden = self.hidden_column_count();
         let filters = self.filter_summary();
         let sort = self.sort_summary();
 
-        let mut parts = vec![table.to_string()];
+        let mut parts = vec![table];
         if hidden > 0 {
             parts.push(format!("+{hidden} hidden"));
         }

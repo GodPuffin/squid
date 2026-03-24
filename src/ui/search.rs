@@ -49,7 +49,7 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
             .map(|hit| {
                 let mut spans = vec![
                     Span::styled(
-                        format!("{}  ", hit.table_name),
+                        format!("{}  ", app.display_table_name(&hit.table_name)),
                         Style::default()
                             .fg(Color::Cyan)
                             .add_modifier(Modifier::BOLD),

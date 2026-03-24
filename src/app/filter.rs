@@ -53,6 +53,7 @@ impl App {
                 self.filter_modal = None;
                 self.open_config_modal();
             }
+            Action::ReverseFocus => self.filter_modal_move_left(),
             Action::MoveLeft => self.filter_modal_move_left(),
             Action::MoveRight | Action::ToggleFocus => self.filter_modal_move_right(),
             Action::MoveUp => self.filter_modal_move_up(),
@@ -64,11 +65,19 @@ impl App {
             Action::InputChar(ch) => self.filter_modal_input_char(ch),
             Action::Backspace => self.filter_modal_backspace(),
             Action::None
+            | Action::SwitchToBrowse
+            | Action::SwitchToSql
             | Action::ToggleView
+            | Action::MoveHome
+            | Action::MoveEnd
+            | Action::PageUp
+            | Action::PageDown
             | Action::Reload
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
-            | Action::FollowLink => {}
+            | Action::FollowLink
+            | Action::ExecuteSql
+            | Action::NewLine => {}
         }
 
         Ok(())
