@@ -1,6 +1,10 @@
 use std::env;
 use std::fs;
 use std::io::ErrorKind;
+#[cfg(unix)]
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+#[cfg(windows)]
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -15,6 +19,7 @@ pub struct RecentStore;
 
 impl RecentStore {
     const MAX_ITEMS: usize = 10;
+    const STORAGE_MAGIC: &'static [u8] = b"SQUIDREC1";
 
     pub fn load() -> Result<Vec<RecentItem>> {
         let paths = Self::load_from_path(&Self::storage_path()?)?;
@@ -25,7 +30,7 @@ impl RecentStore {
         let absolute = normalize_database_path(path)?;
         let storage_path = Self::storage_path()?;
         let mut paths = Self::load_from_path(&storage_path)?;
-        paths.retain(|existing| existing != &absolute);
+        paths.retain(|existing| !recent_paths_match(existing, &absolute));
         paths.insert(0, absolute);
         paths.truncate(Self::MAX_ITEMS);
         Self::save_to_path(&storage_path, &paths)?;
@@ -35,7 +40,7 @@ impl RecentStore {
     pub fn remove(path: &Path) -> Result<Vec<RecentItem>> {
         let storage_path = Self::storage_path()?;
         let mut paths = Self::load_from_path(&storage_path)?;
-        paths.retain(|existing| existing != path);
+        paths.retain(|existing| !recent_paths_match(existing, path));
         Self::save_to_path(&storage_path, &paths)?;
         Ok(Self::to_items(paths))
     }
@@ -72,7 +77,7 @@ impl RecentStore {
     }
 
     fn load_from_path(path: &Path) -> Result<Vec<PathBuf>> {
-        let contents = match fs::read_to_string(path) {
+        let contents = match fs::read(path) {
             Ok(contents) => contents,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => {
@@ -82,11 +87,14 @@ impl RecentStore {
             }
         };
 
-        Ok(contents
-            .lines()
-            .filter(|line| !line.is_empty())
-            .map(PathBuf::from)
-            .collect())
+        if contents.starts_with(Self::STORAGE_MAGIC) {
+            return Self::load_binary_paths(&contents[Self::STORAGE_MAGIC.len()..]).with_context(
+                || format!("failed to read recent database list {}", path.display()),
+            );
+        }
+
+        Self::load_legacy_text_paths(&contents)
+            .with_context(|| format!("failed to read recent database list {}", path.display()))
     }
 
     fn save_to_path(path: &Path, paths: &[PathBuf]) -> Result<()> {
@@ -99,17 +107,46 @@ impl RecentStore {
             })?;
         }
 
-        let mut body = paths
-            .iter()
-            .map(|path| path.to_string_lossy().into_owned())
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !body.is_empty() {
-            body.push('\n');
+        let mut body = Vec::new();
+        body.extend_from_slice(Self::STORAGE_MAGIC);
+        for path in paths {
+            let encoded = path_to_storage_bytes(path);
+            body.extend_from_slice(&(encoded.len() as u32).to_le_bytes());
+            body.extend_from_slice(&encoded);
         }
 
         fs::write(path, body)
             .with_context(|| format!("failed to write recent database list {}", path.display()))
+    }
+
+    fn load_binary_paths(mut bytes: &[u8]) -> Result<Vec<PathBuf>> {
+        let mut paths = Vec::new();
+        while !bytes.is_empty() {
+            if bytes.len() < 4 {
+                anyhow::bail!("truncated recent database entry length");
+            }
+
+            let length = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+            bytes = &bytes[4..];
+            if bytes.len() < length {
+                anyhow::bail!("truncated recent database entry payload");
+            }
+
+            paths.push(path_from_storage_bytes(&bytes[..length])?);
+            bytes = &bytes[length..];
+        }
+
+        Ok(paths)
+    }
+
+    fn load_legacy_text_paths(bytes: &[u8]) -> Result<Vec<PathBuf>> {
+        let contents =
+            String::from_utf8(bytes.to_vec()).context("recent database list is not valid UTF-8")?;
+        Ok(contents
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(PathBuf::from)
+            .collect())
     }
 }
 
@@ -184,6 +221,29 @@ fn recent_path_is_available(path: &Path) -> bool {
     }
 
     path.is_file()
+}
+
+fn recent_paths_match(left: &Path, right: &Path) -> bool {
+    match (recent_local_identity(left), recent_local_identity(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
+    }
+}
+
+fn recent_local_identity(path: &Path) -> Option<PathBuf> {
+    if let Some(local_path) = sqlite_uri_local_path(path) {
+        return Some(local_path);
+    }
+
+    if preserves_sqlite_special_name(path) {
+        return None;
+    }
+
+    if path.to_str().is_some_and(|raw| raw.starts_with("file:")) {
+        return None;
+    }
+
+    Some(normalize_local_path(path))
 }
 
 fn sqlite_uri_local_path(path: &Path) -> Option<PathBuf> {
@@ -276,6 +336,37 @@ fn percent_decode(value: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
+#[cfg(unix)]
+fn path_to_storage_bytes(path: &Path) -> Vec<u8> {
+    path.as_os_str().as_bytes().to_vec()
+}
+
+#[cfg(unix)]
+fn path_from_storage_bytes(bytes: &[u8]) -> Result<PathBuf> {
+    Ok(PathBuf::from(std::ffi::OsString::from_vec(bytes.to_vec())))
+}
+
+#[cfg(windows)]
+fn path_to_storage_bytes(path: &Path) -> Vec<u8> {
+    path.as_os_str()
+        .encode_wide()
+        .flat_map(|unit| unit.to_le_bytes())
+        .collect()
+}
+
+#[cfg(windows)]
+fn path_from_storage_bytes(bytes: &[u8]) -> Result<PathBuf> {
+    if bytes.len() % 2 != 0 {
+        anyhow::bail!("recent database entry has an odd number of UTF-16 bytes");
+    }
+
+    let wide = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    Ok(PathBuf::from(std::ffi::OsString::from_wide(&wide)))
+}
+
 fn decode_hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -295,10 +386,13 @@ fn preserves_sqlite_special_name(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStringExt;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
         RecentStore, normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available,
+        recent_paths_match,
     };
 
     #[test]
@@ -368,6 +462,33 @@ mod tests {
     }
 
     #[test]
+    fn save_and_load_preserve_newlines_in_paths() {
+        let path = unique_test_path("save-newline");
+        let entries = vec![std::path::PathBuf::from("report\n2026.db")];
+
+        RecentStore::save_to_path(&path, &entries).unwrap();
+
+        let loaded = RecentStore::load_from_path(&path).unwrap();
+        assert_eq!(loaded, entries);
+        cleanup(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_and_load_preserve_non_utf8_paths() {
+        let path = unique_test_path("save-nonutf8");
+        let entries = vec![std::path::PathBuf::from(std::ffi::OsString::from_vec(
+            vec![b'r', b'e', b'p', b'o', b'r', b't', 0xff, b'.', b'd', b'b'],
+        ))];
+
+        RecentStore::save_to_path(&path, &entries).unwrap();
+
+        let loaded = RecentStore::load_from_path(&path).unwrap();
+        assert_eq!(loaded, entries);
+        cleanup(&path);
+    }
+
+    #[test]
     fn record_logic_moves_existing_to_front_and_trims() {
         let mut entries = (0..12)
             .map(|index| std::path::PathBuf::from(format!("C:\\db{index}.sqlite")))
@@ -380,6 +501,21 @@ mod tests {
 
         assert_eq!(entries.first(), Some(&target));
         assert_eq!(entries.len(), 10);
+    }
+
+    #[test]
+    fn recent_paths_match_plain_paths_and_file_uri_aliases() {
+        let path = std::env::temp_dir().join("squid-recent-match.db");
+        let raw_path = path.clone();
+        let file_uri =
+            std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
+        let localhost_uri = std::path::PathBuf::from(format!(
+            "file://localhost{}?mode=ro",
+            path_to_sqlite_uri_path(&path)
+        ));
+
+        assert!(recent_paths_match(&raw_path, &file_uri));
+        assert!(recent_paths_match(&file_uri, &localhost_uri));
     }
 
     #[test]
