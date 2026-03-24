@@ -18,7 +18,7 @@ impl App {
             return Ok(());
         }
 
-        match self.db.execute_sql(&query, SQL_RESULT_LIMIT) {
+        match self.db_ref()?.execute_sql(&query, SQL_RESULT_LIMIT) {
             Ok(SqlExecutionResult::Rows {
                 columns,
                 rows,

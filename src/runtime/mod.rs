@@ -11,14 +11,14 @@ use ratatui::layout::Rect;
 
 use crate::app::{Action, App};
 
-pub fn run(path: PathBuf) -> Result<()> {
+pub fn run(path: Option<PathBuf>) -> Result<()> {
     let mut terminal = terminal::setup_terminal()?;
     let result = run_loop(&mut terminal, path);
     terminal::restore_terminal(&mut terminal)?;
     result
 }
 
-fn run_loop(terminal: &mut terminal::TerminalHandle, path: PathBuf) -> Result<()> {
+fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> Result<()> {
     let mut app = App::load(path)?;
     let mut mouse_state = mouse::MouseState::default();
 
@@ -49,8 +49,11 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: PathBuf) -> Result<()
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 let action = input::action_for_key(&app, key);
-                if matches!(action, Action::Quit) && app.modal.is_none() {
-                    break;
+                if matches!(action, Action::Quit) {
+                    if app.request_quit()? {
+                        break;
+                    }
+                    continue;
                 }
                 app.handle(action)?;
             }

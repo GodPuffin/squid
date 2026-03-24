@@ -4,6 +4,7 @@ use crate::db::{FilterMode, SearchHit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AppMode {
+    Home,
     Browse,
     Sql,
 }

@@ -75,7 +75,7 @@ impl App {
             return Ok(());
         }
 
-        let record = self.db.row_record_at_offset(
+        let record = self.db_ref()?.row_record_at_offset(
             &table_name,
             &self.current_sort_clauses(),
             &self.current_filter_clauses(),
@@ -205,7 +205,7 @@ impl App {
         }
 
         self.detail = None;
-        let Some(offset) = self.db.locate_foreign_row_offset(
+        let Some(offset) = self.db_ref()?.locate_foreign_row_offset(
             &target.table_name,
             &target.column_name,
             &target.value,

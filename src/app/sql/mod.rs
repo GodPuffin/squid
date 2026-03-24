@@ -5,7 +5,7 @@ mod input;
 
 use anyhow::Result;
 
-use self::cursor::{index_for_line_col, line_col_from_index};
+use self::cursor::{index_for_line_col, line_col_from_index, split_lines};
 use super::{
     Action, App, SqlCompletionItem, SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState,
 };
@@ -30,11 +30,7 @@ impl App {
     }
 
     pub fn sql_query_lines(&self) -> Vec<String> {
-        if self.sql.query.is_empty() {
-            vec![String::new()]
-        } else {
-            self.sql.query.lines().map(str::to_string).collect()
-        }
+        split_lines(&self.sql.query)
     }
 
     pub fn sql_visible_history(&self) -> &[SqlHistoryEntry] {
@@ -231,5 +227,23 @@ impl App {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+
+    #[test]
+    fn sql_query_lines_preserve_trailing_empty_line() {
+        let mut app = App::load(None).expect("load app");
+        app.sql.query = "SELECT\n".to_string();
+        app.sql.cursor = app.sql.query.len();
+
+        assert_eq!(
+            app.sql_query_lines(),
+            vec!["SELECT".to_string(), String::new()]
+        );
+        assert_eq!(app.sql_cursor_line_col(), (1, 0));
     }
 }

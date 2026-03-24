@@ -51,9 +51,17 @@ pub(super) fn index_for_line_col(value: &str, target_line: usize, target_col: us
     value.len()
 }
 
+pub(super) fn split_lines(value: &str) -> Vec<String> {
+    if value.is_empty() {
+        vec![String::new()]
+    } else {
+        value.split('\n').map(str::to_string).collect()
+    }
+}
+
 pub(super) fn line_length(value: &str, target_line: usize) -> usize {
-    value
-        .lines()
+    split_lines(value)
+        .into_iter()
         .nth(target_line)
         .map(|line| line.chars().count())
         .unwrap_or(0)
@@ -72,7 +80,7 @@ pub(super) fn move_vertical(value: &str, index: usize, delta: isize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{line_col_from_index, move_vertical};
+    use super::{line_col_from_index, line_length, move_vertical, split_lines};
 
     #[test]
     fn line_column_round_trips() {
@@ -86,5 +94,16 @@ mod tests {
         let query = "SELECT\ncolumn\nx";
         let moved = move_vertical(query, query.len() - 1, -1);
         assert_eq!(line_col_from_index(query, moved), (1, 0));
+    }
+
+    #[test]
+    fn split_lines_preserves_trailing_empty_line() {
+        let query = "SELECT\n";
+
+        assert_eq!(
+            split_lines(query),
+            vec!["SELECT".to_string(), String::new()]
+        );
+        assert_eq!(line_length(query, 1), 0);
     }
 }

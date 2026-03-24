@@ -147,7 +147,7 @@ impl App {
             return Ok(columns.clone());
         }
 
-        let columns = self.db.list_columns(table_name)?;
+        let columns = self.db_ref()?.list_columns(table_name)?;
         self.sql
             .column_cache
             .insert(table_name.to_string(), columns.clone());
@@ -748,12 +748,19 @@ mod tests {
 
         let mut app = App::load(path.clone()).expect("load app");
         app.db
+            .as_ref()
+            .expect("db loaded")
             .execute_sql(
                 &format!("ATTACH DATABASE '{}' AS other", attached.display()),
                 10,
             )
             .expect("attach on app connection");
-        app.tables = app.db.list_tables().expect("refresh tables");
+        app.tables = app
+            .db
+            .as_ref()
+            .expect("db loaded")
+            .list_tables()
+            .expect("refresh tables");
         app.sql.column_cache.clear();
 
         app.sql.query = "SELECT other.".to_string();
@@ -796,12 +803,19 @@ mod tests {
 
         let mut app = App::load(path.clone()).expect("load app");
         app.db
+            .as_ref()
+            .expect("db loaded")
             .execute_sql(
                 &format!("ATTACH DATABASE '{}' AS other", attached.display()),
                 10,
             )
             .expect("attach on app connection");
-        app.tables = app.db.list_tables().expect("refresh tables");
+        app.tables = app
+            .db
+            .as_ref()
+            .expect("db loaded")
+            .list_tables()
+            .expect("refresh tables");
         app.sql.column_cache.clear();
         app.sql.query = "SELECT orders.".to_string();
         app.sql.cursor = app.sql.query.len();
