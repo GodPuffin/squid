@@ -34,9 +34,3 @@ cd squid
 cargo build --release
 .\target\release\squid.exe path\to\database.sqlite
 ```
-
-## Modes
-
-- `1` switches to `Browse` mode.
-- `2` switches to `SQL` mode.
-- In SQL mode, use `F5` to execute the current query and `F2` to open completions.

@@ -212,7 +212,6 @@ impl App {
             Action::Delete => self.sql_delete()?,
             Action::NewLine => self.sql_newline()?,
             Action::ExecuteSql => self.sql_execute()?,
-            Action::OpenCompletion => self.sql_open_completion()?,
             Action::Confirm => self.sql_confirm()?,
             Action::Clear => self.sql_clear(),
             Action::Reload => self.reload()?,
@@ -482,13 +481,6 @@ impl App {
         Ok(())
     }
 
-    fn sql_open_completion(&mut self) -> Result<()> {
-        if self.sql.focus != SqlPane::Editor {
-            return Ok(());
-        }
-        self.sql_refresh_completion_with_empty_prefix(true)
-    }
-
     fn sql_clear(&mut self) {
         match self.sql.focus {
             SqlPane::Editor => {
@@ -604,17 +596,13 @@ impl App {
     }
 
     fn sql_refresh_completion(&mut self) -> Result<()> {
-        self.sql_refresh_completion_with_empty_prefix(false)
-    }
-
-    fn sql_refresh_completion_with_empty_prefix(&mut self, allow_empty_prefix: bool) -> Result<()> {
         if self.sql.focus != SqlPane::Editor {
             self.sql.completion = None;
             return Ok(());
         }
 
         let (prefix_start, prefix) = completion_prefix(&self.sql.query, self.sql.cursor);
-        if prefix.is_empty() && !allow_empty_prefix {
+        if prefix.is_empty() {
             self.sql.completion = None;
             return Ok(());
         }
@@ -681,8 +669,14 @@ impl App {
             }
         }
 
-        items.sort_by(|left, right| left.label.cmp(&right.label));
-        items.dedup_by(|left, right| left.label.eq_ignore_ascii_case(&right.label));
+        items.sort_by(|left, right| {
+            left.label
+                .cmp(&right.label)
+                .then_with(|| left.insert_text.cmp(&right.insert_text))
+        });
+        items.dedup_by(|left, right| {
+            left.label.eq_ignore_ascii_case(&right.label) && left.insert_text == right.insert_text
+        });
 
         if prefix_lower.is_empty() {
             Ok(items.into_iter().take(6).collect())
@@ -1079,39 +1073,6 @@ mod tests {
     }
 
     #[test]
-    fn sql_open_completion_shows_suggestions_without_identifier_prefix() {
-        let path = temp_db_path("manual-completion");
-        let conn = Connection::open(&path).expect("create db");
-        conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT)", [])
-            .expect("create table");
-        drop(conn);
-
-        let mut app = App::load(path.clone()).expect("load app");
-        app.mode = crate::app::AppMode::Sql;
-        app.sql.query = "SELECT ".to_string();
-        app.sql.cursor = app.sql.query.len();
-
-        app.handle(Action::OpenCompletion).expect("open completion");
-
-        let completion = app.sql.completion.as_ref().expect("completion");
-        assert_eq!(completion.prefix_start, app.sql.cursor);
-        assert!(!completion.items.is_empty());
-
-        let labels = completion
-            .items
-            .iter()
-            .map(|item| item.label.as_str())
-            .collect::<Vec<_>>();
-
-        assert!(
-            labels.iter().any(|label| !label.trim().is_empty()),
-            "manual completion should surface at least one visible suggestion"
-        );
-
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
     fn sql_move_up_refreshes_completion_for_new_line_prefix() {
         let path = temp_db_path("vertical-completion");
         let conn = Connection::open(&path).expect("create db");
@@ -1402,6 +1363,31 @@ mod tests {
 
         let _ = fs::remove_file(path);
         let _ = fs::remove_file(attached);
+    }
+
+    #[test]
+    fn sql_completion_preserves_snippets_with_keyword_labels() {
+        let app = test_app_with_tables(
+            "snippet-labels",
+            &["CREATE TABLE orders(id INTEGER PRIMARY KEY)"],
+        );
+
+        let items = app
+            .sql_completion_candidates("INSERT")
+            .expect("completion candidates");
+
+        assert!(
+            items.iter().any(|item| {
+                item.label == "INSERT INTO" && item.insert_text == "INSERT INTO  ()\nVALUES ();"
+            }),
+            "expected snippet completion for INSERT INTO"
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.label == "INSERT INTO" && item.insert_text == "INSERT INTO"),
+            "expected keyword completion for INSERT INTO"
+        );
     }
 
     fn temp_db_path(label: &str) -> PathBuf {

@@ -66,7 +66,6 @@ impl App {
             | Action::OpenFilters
             | Action::Reload
             | Action::ExecuteSql
-            | Action::OpenCompletion
             | Action::NewLine => {}
         }
 
