@@ -257,7 +257,6 @@ impl App {
     }
 
     pub(super) fn reload(&mut self) -> Result<()> {
-        self.db = Database::open(&self.path)?;
         self.refresh_loaded_db_state()
     }
 
@@ -509,6 +508,29 @@ mod tests {
 
         assert_eq!(app.mode, crate::app::AppMode::Browse);
         assert!(app.sql.completion.is_none());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn reload_preserves_connection_scoped_tables() {
+        let path = temp_db_path("reload-preserves-temp");
+        let conn = Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY)", [])
+            .expect("create users");
+        drop(conn);
+
+        let mut app = App::load(path.clone()).expect("load app");
+        app.db
+            .execute_sql("CREATE TEMP TABLE scratch(value TEXT)", 10)
+            .expect("create temp table");
+
+        app.reload().expect("reload");
+
+        assert!(
+            app.tables.iter().any(|table| table.name == "temp.scratch"),
+            "reload should keep connection-scoped temp tables visible"
+        );
 
         let _ = fs::remove_file(path);
     }
