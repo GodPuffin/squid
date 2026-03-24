@@ -100,11 +100,11 @@ pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
         sql: (app.mode == AppMode::Sql).then(|| {
             let mut sql = sql_layout(body[1]);
             if !app.sql_completion_items().is_empty() {
-                let (line, col) = app.sql_cursor_line_col();
+                let (line, _) = app.sql_cursor_line_col();
                 sql.completion = Some(sql_completion_rect(
                     sql.editor,
                     line.saturating_sub(app.sql.editor_scroll),
-                    col,
+                    app.sql_cursor_screen_col(),
                 ));
             }
             sql

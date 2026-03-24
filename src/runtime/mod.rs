@@ -35,6 +35,7 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: PathBuf) -> Result<()
         if let Some(sql) = &layout.sql {
             app.set_sql_viewport_sizes(
                 sql.editor.height.saturating_sub(2) as usize,
+                sql.editor.width.saturating_sub(2) as usize,
                 sql.history.height.saturating_sub(2) as usize,
                 sql.results.height.saturating_sub(3) as usize,
             );

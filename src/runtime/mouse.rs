@@ -47,7 +47,8 @@ pub fn handle_mouse_event(
                 if let Some(completion) = sql.completion
                     && let Some(index) = ui::list_row_at(completion, column, row)
                 {
-                    app.sql_select_completion_in_view(index);
+                    let visible_items = completion.height.saturating_sub(2) as usize;
+                    app.sql_select_completion_in_view(index, visible_items);
                     app.sql_apply_selected_completion();
                     state.last_sql_history_click = None;
                 } else if contains(sql.editor, column, row) {

@@ -263,6 +263,7 @@ impl App {
                 self.sql.query.clear();
                 self.sql.cursor = 0;
                 self.sql.editor_scroll = 0;
+                self.sql.editor_col_offset = 0;
                 self.sql.completion = None;
                 self.sql.status = "Query cleared".to_string();
             }

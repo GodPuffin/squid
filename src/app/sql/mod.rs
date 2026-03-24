@@ -14,10 +14,12 @@ impl App {
     pub fn set_sql_viewport_sizes(
         &mut self,
         editor_height: usize,
+        editor_width: usize,
         history_height: usize,
         result_height: usize,
     ) {
         self.sql.editor_height = editor_height.max(1);
+        self.sql.editor_width = editor_width.max(1);
         self.sql.history_height = history_height.max(1);
         self.sql.result_height = result_height.max(1);
         self.ensure_sql_viewport();
@@ -78,15 +80,26 @@ impl App {
             .unwrap_or(&[])
     }
 
-    pub fn sql_selected_completion_in_view(&self) -> Option<usize> {
-        self.sql.completion.as_ref().and_then(|completion| {
-            (!completion.items.is_empty())
-                .then_some(completion.selected.min(completion.items.len() - 1))
-        })
+    pub fn sql_completion_window(&self, visible_items: usize) -> Option<(usize, usize, usize)> {
+        let completion = self.sql.completion.as_ref()?;
+        if completion.items.is_empty() {
+            return None;
+        }
+
+        let visible_items = visible_items.max(1);
+        let selected = completion.selected.min(completion.items.len() - 1);
+        let start = selected.saturating_sub(visible_items.saturating_sub(1));
+        let end = (start + visible_items).min(completion.items.len());
+        Some((start, end, selected))
     }
 
     pub fn sql_cursor_line_col(&self) -> (usize, usize) {
         line_col_from_index(&self.sql.query, self.sql.cursor)
+    }
+
+    pub fn sql_cursor_screen_col(&self) -> usize {
+        let (_, col) = self.sql_cursor_line_col();
+        col.saturating_sub(self.sql.editor_col_offset)
     }
 
     pub fn sql_select_history_in_view(&mut self, index: usize) {
@@ -100,18 +113,25 @@ impl App {
 
     pub fn sql_set_cursor_from_view(&mut self, line_in_view: usize, col: usize) {
         let line = self.sql.editor_scroll + line_in_view;
-        let target_col = col.saturating_sub(1);
+        let target_col = self
+            .sql
+            .editor_col_offset
+            .saturating_add(col.saturating_sub(1));
         self.sql.cursor = index_for_line_col(&self.sql.query, line, target_col);
         self.sql.focus = SqlPane::Editor;
         let _ = self.sql_refresh_completion();
         self.ensure_sql_viewport();
     }
 
-    pub fn sql_select_completion_in_view(&mut self, index: usize) {
-        if let Some(completion) = &mut self.sql.completion
-            && index < completion.items.len()
+    pub fn sql_select_completion_in_view(&mut self, index: usize, visible_items: usize) {
+        let Some((start, end, _)) = self.sql_completion_window(visible_items) else {
+            return;
+        };
+        let absolute = start + index;
+        if absolute < end
+            && let Some(completion) = &mut self.sql.completion
         {
-            completion.selected = index;
+            completion.selected = absolute;
             self.sql.focus = SqlPane::Editor;
         }
     }
@@ -134,7 +154,7 @@ impl App {
     }
 
     pub(super) fn ensure_sql_viewport(&mut self) {
-        let (line, _) = self.sql_cursor_line_col();
+        let (line, col) = self.sql_cursor_line_col();
         let max_editor_scroll = self
             .sql_query_lines()
             .len()
@@ -145,6 +165,14 @@ impl App {
         }
         if line >= self.sql.editor_scroll + self.sql.editor_height {
             self.sql.editor_scroll = line + 1 - self.sql.editor_height;
+        }
+
+        self.sql.editor_col_offset = self.sql.editor_col_offset.min(col);
+        if col < self.sql.editor_col_offset {
+            self.sql.editor_col_offset = col;
+        }
+        if col >= self.sql.editor_col_offset + self.sql.editor_width {
+            self.sql.editor_col_offset = col + 1 - self.sql.editor_width;
         }
 
         let max_history_offset = self

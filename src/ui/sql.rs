@@ -24,11 +24,18 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
 fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
     let lines = app.sql_query_lines();
+    let width = area.width.saturating_sub(2) as usize;
     let visible = lines
         .iter()
         .skip(app.sql.editor_scroll)
         .take(app.sql.editor_height)
-        .map(|line| Line::from(highlight_sql_line(line)))
+        .map(|line| {
+            Line::from(highlight_sql_line(&visible_editor_slice(
+                line,
+                app.sql.editor_col_offset,
+                width,
+            )))
+        })
         .collect::<Vec<_>>();
 
     let text = if visible.is_empty() {
@@ -40,19 +47,17 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
         Text::from(visible)
     };
 
-    let editor = Paragraph::new(text)
-        .block(panel_block(
-            "SQL Editor",
-            app.sql_focus() == SqlPane::Editor,
-        ))
-        .wrap(Wrap { trim: false });
+    let editor = Paragraph::new(text).block(panel_block(
+        "SQL Editor",
+        app.sql_focus() == SqlPane::Editor,
+    ));
     frame.render_widget(editor, area);
 
     if app.sql_focus() == SqlPane::Editor {
         let inner_x = area.x.saturating_add(1);
         let inner_y = area.y.saturating_add(1);
-        let width = area.width.saturating_sub(2) as usize;
-        let (line, col) = app.sql_cursor_line_col();
+        let (line, _) = app.sql_cursor_line_col();
+        let col = app.sql_cursor_screen_col();
         let cursor_y = line.saturating_sub(app.sql.editor_scroll);
         if cursor_y < app.sql.editor_height && col < width {
             frame.set_cursor_position((
@@ -134,21 +139,33 @@ fn render_result_table(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_completion(frame: &mut Frame, app: &App, editor_area: Rect, popup_rect: Option<Rect>) {
-    let items = app.sql_completion_items();
-    if items.is_empty() {
+    let Some(completion) = &app.sql.completion else {
+        return;
+    };
+    if completion.items.is_empty() {
         return;
     }
+    let popup_item_count = popup_rect
+        .map(|rect| rect.height.saturating_sub(2) as usize)
+        .unwrap_or(6)
+        .max(1);
+    let Some((start, end, selected)) = app.sql_completion_window(popup_item_count) else {
+        return;
+    };
 
     let popup = popup_rect.unwrap_or_else(|| {
-        let (line, col) = app.sql_cursor_line_col();
-        sql_completion_rect(editor_area, line.saturating_sub(app.sql.editor_scroll), col)
+        let (line, _) = app.sql_cursor_line_col();
+        sql_completion_rect(
+            editor_area,
+            line.saturating_sub(app.sql.editor_scroll),
+            app.sql_cursor_screen_col(),
+        )
     });
 
     frame.render_widget(Clear, popup);
     let list = List::new(
-        items
+        completion.items[start..end]
             .iter()
-            .take(6)
             .map(|item| ListItem::new(item.label.clone()))
             .collect::<Vec<_>>(),
     )
@@ -157,8 +174,12 @@ fn render_completion(frame: &mut Frame, app: &App, editor_area: Rect, popup_rect
     .highlight_symbol(">> ");
 
     let mut state = ListState::default();
-    state.select(app.sql_selected_completion_in_view());
+    state.select(Some(selected - start));
     frame.render_stateful_widget(list, popup, &mut state);
+}
+
+fn visible_editor_slice(line: &str, start_col: usize, width: usize) -> String {
+    line.chars().skip(start_col).take(width).collect()
 }
 
 fn highlight_sql_line(line: &str) -> Vec<Span<'static>> {

@@ -268,7 +268,12 @@ fn sql_aliases_before_cursor(query: &str) -> HashMap<String, String> {
 
     while index < tokens.len() {
         let is_source_keyword = identifier_of(tokens.get(index))
-            .map(|token| matches!(token.to_ascii_uppercase().as_str(), "FROM" | "JOIN" | "UPDATE" | "INTO"))
+            .map(|token| {
+                matches!(
+                    token.to_ascii_uppercase().as_str(),
+                    "FROM" | "JOIN" | "UPDATE" | "INTO"
+                )
+            })
             .unwrap_or(false);
         if !is_source_keyword {
             index += 1;
@@ -341,15 +346,25 @@ fn parse_table_reference(tokens: &[String], start: usize) -> Option<(String, usi
 }
 
 fn identifier_of(token: Option<&String>) -> Option<&str> {
-    token
-        .map(String::as_str)
-        .filter(|token| token.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_'))
+    token.map(String::as_str).filter(|token| {
+        token
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    })
 }
 
 fn is_clause_keyword(token: &str) -> bool {
     matches!(
         token.to_ascii_uppercase().as_str(),
-        "ON" | "WHERE" | "GROUP" | "ORDER" | "LIMIT" | "LEFT" | "RIGHT" | "INNER" | "OUTER" | "JOIN"
+        "ON" | "WHERE"
+            | "GROUP"
+            | "ORDER"
+            | "LIMIT"
+            | "LEFT"
+            | "RIGHT"
+            | "INNER"
+            | "OUTER"
+            | "JOIN"
     )
 }
 
@@ -836,8 +851,9 @@ mod tests {
 
     #[test]
     fn sql_aliases_map_aliases_to_their_tables() {
-        let aliases =
-            sql_aliases_before_cursor("SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id");
+        let aliases = sql_aliases_before_cursor(
+            "SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id",
+        );
 
         assert_eq!(aliases.get("o"), Some(&"main.orders".to_string()));
         assert_eq!(aliases.get("u"), Some(&"main.users".to_string()));
