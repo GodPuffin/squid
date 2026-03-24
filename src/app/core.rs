@@ -5,8 +5,8 @@ use anyhow::{Result, anyhow};
 use crate::db::{Database, RowPreview};
 
 use super::{
-    home::normalize_database_path, Action, App, AppMode, ContentView, PaneFocus, RecentStore,
-    SqlPane, SqlResultState, SqlState,
+    Action, App, AppMode, ContentView, PaneFocus, RecentStore, SqlPane, SqlResultState, SqlState,
+    home::normalize_database_path,
 };
 
 impl App {
@@ -536,6 +536,7 @@ impl App {
         self.modal = None;
         self.search = None;
         self.status_message = None;
+        self.sql.column_cache.clear();
         self.reset_content_position();
         self.refresh_preview()?;
         match RecentStore::record(&absolute_path) {
@@ -674,7 +675,6 @@ mod tests {
     use rusqlite::Connection;
 
     use super::App;
-
     #[test]
     fn refresh_loaded_db_state_preserves_selected_table_name() {
         let path = temp_db_path("refresh-selection");
@@ -769,6 +769,33 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn open_database_clears_sql_column_cache() {
+        let first = temp_db_path("open-clears-cache-first");
+        let second = temp_db_path("open-clears-cache-second");
+
+        let conn = Connection::open(&first).expect("create first db");
+        conn.execute("CREATE TABLE users(old_column TEXT)", [])
+            .expect("create first schema");
+        drop(conn);
+
+        let conn = Connection::open(&second).expect("create second db");
+        conn.execute("CREATE TABLE users(new_column TEXT)", [])
+            .expect("create second schema");
+        drop(conn);
+
+        let mut app = App::load(first.clone()).expect("load first app");
+        app.sql
+            .column_cache
+            .insert("main.users".to_string(), vec!["old_column".to_string()]);
+
+        app.open_database(&second).expect("open second db");
+        assert!(app.sql.column_cache.is_empty());
+
+        let _ = fs::remove_file(first);
+        let _ = fs::remove_file(second);
     }
 
     fn temp_db_path(label: &str) -> PathBuf {
