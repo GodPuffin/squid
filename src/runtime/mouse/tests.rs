@@ -149,6 +149,44 @@ fn modal_and_filter_clicks_update_selection() {
     assert_eq!(app.filter_modal_pane(), Some(crate::app::FilterPane::Modes));
 }
 
+#[test]
+fn outside_click_closes_config_modal() {
+    let mut app = app_with_mouse_data("mouse-modal-close");
+    app.handle(Action::OpenConfig).unwrap();
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(0, 0),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert!(app.modal.is_none());
+}
+
+#[test]
+fn outside_click_closes_filter_modal() {
+    let mut app = app_with_mouse_data("mouse-filter-close");
+    app.handle(Action::OpenFilters).unwrap();
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(0, 0),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert!(app.filter_modal.is_none());
+}
+
 fn app_with_mouse_data(label: &str) -> App {
     let path = temp_db_path(label);
     let conn = Connection::open(&path).expect("create db");

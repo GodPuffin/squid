@@ -117,7 +117,9 @@ pub fn handle_mouse_event(
     if let Some(modal) = &layout.modal {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(index) = ui::list_row_at(modal.columns, column, row) {
+                if !contains(modal.area, column, row) {
+                    app.handle(Action::CloseModal)?;
+                } else if let Some(index) = ui::list_row_at(modal.columns, column, row) {
                     app.modal_click_columns(index)?;
                 } else if let Some(index) = ui::list_row_at(modal.sort_candidates, column, row) {
                     app.modal_click_sort_candidate(index, false)?;
@@ -126,7 +128,9 @@ pub fn handle_mouse_event(
                 }
             }
             MouseEventKind::Down(MouseButton::Right) => {
-                if let Some(index) = ui::list_row_at(modal.sort_candidates, column, row) {
+                if !contains(modal.area, column, row) {
+                    app.handle(Action::CloseModal)?;
+                } else if let Some(index) = ui::list_row_at(modal.sort_candidates, column, row) {
                     app.modal_click_sort_candidate(index, true)?;
                 } else if let Some(index) = ui::list_row_at(modal.sort_stack, column, row) {
                     app.modal_remove_sort_rule(index)?;
@@ -158,7 +162,9 @@ pub fn handle_mouse_event(
     if let Some(filter_modal) = &layout.filter_modal {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(index) = ui::list_row_at(filter_modal.columns, column, row) {
+                if !contains(filter_modal.area, column, row) {
+                    app.handle(Action::CloseModal)?;
+                } else if let Some(index) = ui::list_row_at(filter_modal.columns, column, row) {
                     app.filter_modal_select_column(index);
                 } else if let Some(index) = ui::list_row_at(filter_modal.modes, column, row) {
                     app.filter_modal_select_mode(index);
@@ -166,6 +172,11 @@ pub fn handle_mouse_event(
                     app.filter_modal_focus_draft();
                 } else if let Some(index) = ui::list_row_at(filter_modal.active, column, row) {
                     app.filter_modal_select_active(index);
+                }
+            }
+            MouseEventKind::Down(MouseButton::Right) => {
+                if !contains(filter_modal.area, column, row) {
+                    app.handle(Action::CloseModal)?;
                 }
             }
             MouseEventKind::ScrollUp => {
