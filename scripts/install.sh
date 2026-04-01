@@ -10,6 +10,9 @@ case "${OS}:${ARCH}" in
   Linux:x86_64)
     ASSET_NAME="squid-x86_64-unknown-linux-gnu.tar.gz"
     ;;
+  Linux:arm64|Linux:aarch64)
+    ASSET_NAME="squid-aarch64-unknown-linux-gnu.tar.gz"
+    ;;
   Darwin:x86_64)
     ASSET_NAME="squid-x86_64-apple-darwin.tar.gz"
     ;;
