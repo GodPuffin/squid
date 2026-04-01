@@ -8,6 +8,7 @@ use crate::app::{App, ContentView, PaneFocus};
 
 use super::LayoutInfo;
 use super::search::render_search;
+use super::syntax::highlight_sql_line;
 use super::widgets::panel_block;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
@@ -131,7 +132,7 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
 fn render_schema(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let title = app.content_title();
-    let lines: Vec<Line<'_>> = app.schema_lines().into_iter().map(Line::from).collect();
+    let lines = schema_display_lines(app);
 
     let schema = Paragraph::new(lines)
         .block(panel_block(&title, app.focus == PaneFocus::Content))
@@ -140,3 +141,25 @@ fn render_schema(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     frame.render_widget(schema, area);
 }
+
+fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
+    let mut in_create_sql = false;
+
+    app.schema_lines()
+        .into_iter()
+        .map(|line| {
+            if in_create_sql {
+                return Line::from(highlight_sql_line(&line));
+            }
+
+            if line == "Create SQL" {
+                in_create_sql = true;
+            }
+
+            Line::from(line)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;
