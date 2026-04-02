@@ -4,6 +4,7 @@ mod layout;
 mod modals;
 mod search;
 mod sql;
+mod syntax;
 mod tables;
 mod widgets;
 
