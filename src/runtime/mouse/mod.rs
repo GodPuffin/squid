@@ -4,7 +4,7 @@ use anyhow::Result;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use crate::app::{Action, App};
-use crate::ui::{self, LayoutInfo};
+use crate::ui::{self, LayoutInfo, detail_action_rects};
 
 #[derive(Default)]
 pub struct MouseState {
@@ -215,7 +215,13 @@ pub fn handle_mouse_event(
     if let Some(detail) = &layout.detail {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(index) = ui::list_row_at(detail.fields, column, row) {
+                let buttons = detail_action_rects(detail.header, detail.footer);
+                if app.detail_has_changes() && contains(buttons.header_save, column, row) {
+                    app.handle(Action::SaveDetail)?;
+                } else if app.detail_has_changes() && contains(buttons.header_discard, column, row)
+                {
+                    app.handle(Action::DiscardDetail)?;
+                } else if let Some(index) = ui::list_row_at(detail.fields, column, row) {
                     app.detail_select_field(index);
                 } else if contains(detail.value, column, row) {
                     app.detail_focus_value();

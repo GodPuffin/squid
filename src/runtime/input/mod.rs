@@ -8,7 +8,7 @@ pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     }
 
     if app.detail.is_some() {
-        return detail_action(key.code);
+        return detail_action(app, key.code);
     }
     if app.search.is_some() {
         return search_action(key.code);
@@ -22,7 +22,17 @@ pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     root_action(key.code)
 }
 
-fn detail_action(key: KeyCode) -> Action {
+fn detail_action(app: &App, key: KeyCode) -> Action {
+    if app.detail_is_editing() {
+        return match key {
+            KeyCode::Esc => Action::EditDetail,
+            KeyCode::Enter => Action::NewLine,
+            KeyCode::Backspace => Action::Backspace,
+            KeyCode::Char(ch) if !ch.is_control() => Action::InputChar(ch),
+            _ => Action::None,
+        };
+    }
+
     match key {
         KeyCode::Esc | KeyCode::Char('q') => Action::CloseModal,
         KeyCode::Up => Action::MoveUp,
@@ -30,6 +40,9 @@ fn detail_action(key: KeyCode) -> Action {
         KeyCode::Left => Action::MoveLeft,
         KeyCode::Right => Action::MoveRight,
         KeyCode::Char('g') => Action::FollowLink,
+        KeyCode::Char('e') => Action::EditDetail,
+        KeyCode::Char('s') => Action::SaveDetail,
+        KeyCode::Char('c') => Action::DiscardDetail,
         KeyCode::Enter => Action::Confirm,
         _ => Action::None,
     }

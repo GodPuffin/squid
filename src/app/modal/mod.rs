@@ -65,6 +65,9 @@ impl App {
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::FollowLink
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::InputChar(_)
             | Action::Backspace
             | Action::ExecuteSql

@@ -126,6 +126,9 @@ impl App {
             Action::CloseModal
             | Action::ToggleItem
             | Action::FollowLink
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::Delete
             | Action::Clear
             | Action::MoveHome
@@ -578,6 +581,9 @@ impl App {
             | Action::CloseModal
             | Action::ToggleItem
             | Action::Clear
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::OpenFilters

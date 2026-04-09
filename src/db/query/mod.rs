@@ -4,7 +4,7 @@ use rusqlite::types::Value;
 
 use super::schema::count_rows;
 use super::value::format_value;
-use super::{Database, FilterClause, FilterMode, RowPreview, RowRecord, SortClause};
+use super::{Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause};
 
 impl Database {
     pub fn preview_table(
@@ -122,9 +122,17 @@ impl Database {
                 let fields = columns
                     .iter()
                     .enumerate()
-                    .map(|(idx, column)| Ok((column.clone(), format_value(row.get_ref(idx)?))))
+                    .map(|(idx, column)| {
+                        let value = row.get_ref(idx)?;
+                        Ok(RowField {
+                            column_name: column.clone(),
+                            value: format_value(value),
+                            is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
+                        })
+                    })
                     .collect::<Result<Vec<_>, rusqlite::Error>>()?;
                 return Ok(Some(RowRecord {
+                    rowid: None,
                     row_label: format!("row {}", offset + 1),
                     fields,
                     foreign_keys: self.foreign_key_info(table_name)?,
@@ -140,10 +148,18 @@ impl Database {
         let fields = columns
             .iter()
             .enumerate()
-            .map(|(idx, column)| Ok((column.clone(), format_value(row.get_ref(idx + 1)?))))
+            .map(|(idx, column)| {
+                let value = row.get_ref(idx + 1)?;
+                Ok(RowField {
+                    column_name: column.clone(),
+                    value: format_value(value),
+                    is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
+                })
+            })
             .collect::<Result<Vec<_>, rusqlite::Error>>()?;
 
         Ok(Some(RowRecord {
+            rowid: Some(rowid),
             row_label: format!("rowid {rowid}"),
             fields,
             foreign_keys: self.foreign_key_info(table_name)?,

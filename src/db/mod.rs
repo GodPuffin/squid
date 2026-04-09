@@ -82,9 +82,17 @@ pub struct ForeignKeyInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct RowField {
+    pub column_name: String,
+    pub value: String,
+    pub is_blob: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct RowRecord {
+    pub rowid: Option<i64>,
     pub row_label: String,
-    pub fields: Vec<(String, String)>,
+    pub fields: Vec<RowField>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 

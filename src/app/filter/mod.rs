@@ -76,6 +76,9 @@ impl App {
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::FollowLink
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::ExecuteSql
             | Action::NewLine => {}
         }

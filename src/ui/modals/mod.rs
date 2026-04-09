@@ -1,6 +1,6 @@
 pub mod shared;
 
-mod detail;
+pub(crate) mod detail;
 mod filter;
 mod view;
 

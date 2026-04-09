@@ -63,6 +63,9 @@ impl App {
             | Action::Delete
             | Action::Clear
             | Action::FollowLink
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::OpenFilters
             | Action::Reload
             | Action::ExecuteSql

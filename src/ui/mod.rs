@@ -16,6 +16,7 @@ pub use layout::{
     LayoutInfo, home_recent_row_at, layout_info, list_row_at, list_scroll_offset,
     search_result_row_at, table_row_at, viewport_sizes,
 };
+pub(crate) use modals::detail::action_rects as detail_action_rects;
 
 pub fn render(frame: &mut Frame, app: &App) {
     let layout = layout_info(frame.area(), app);

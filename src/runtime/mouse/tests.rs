@@ -7,7 +7,7 @@ use ratatui::layout::Rect;
 use rusqlite::Connection;
 
 use crate::app::{Action, App, AppMode, SqlCompletionItem, SqlCompletionState, SqlPane, SqlState};
-use crate::ui::layout_info;
+use crate::ui::{detail_action_rects, layout_info};
 
 use super::{MouseState, contains, handle_mouse_event, is_double_click};
 
@@ -185,6 +185,54 @@ fn outside_click_closes_filter_modal() {
     .unwrap();
 
     assert!(app.filter_modal.is_none());
+}
+
+#[test]
+fn detail_footer_save_button_applies_row_changes() {
+    let mut app = app_with_mouse_data("mouse-detail-save");
+    app.focus_content();
+    app.handle(Action::Confirm).unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "name")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+    app.handle(Action::EditDetail).unwrap();
+    for _ in "alice".chars() {
+        app.handle(Action::Backspace).unwrap();
+    }
+    for ch in "cara".chars() {
+        app.handle(Action::InputChar(ch)).unwrap();
+    }
+    app.handle(Action::EditDetail).unwrap();
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let detail = layout.detail.as_ref().unwrap();
+    let buttons = detail_action_rects(detail.header, detail.footer);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(buttons.header_save.x, buttons.header_save.y),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "name")
+        .unwrap();
+    assert_eq!(field.original_value, "cara");
+    assert!(!app.detail_has_changes());
 }
 
 fn app_with_mouse_data(label: &str) -> App {

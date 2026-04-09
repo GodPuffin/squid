@@ -126,6 +126,12 @@ pub enum DetailPane {
 }
 
 #[derive(Clone, Debug)]
+pub struct DetailMessage {
+    pub text: String,
+    pub is_error: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct DetailForeignTarget {
     pub table_name: String,
     pub column_name: String,
@@ -135,18 +141,31 @@ pub struct DetailForeignTarget {
 #[derive(Clone, Debug)]
 pub struct DetailField {
     pub column_name: String,
-    pub value: String,
+    pub data_type: String,
+    pub not_null: bool,
+    pub original_value: String,
+    pub draft_value: String,
     pub foreign_target: Option<DetailForeignTarget>,
+    pub is_blob: bool,
+}
+
+impl DetailField {
+    pub fn is_dirty(&self) -> bool {
+        self.original_value != self.draft_value
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct DetailState {
+    pub rowid: Option<i64>,
     pub row_label: String,
     pub pane: DetailPane,
     pub selected_field: usize,
     pub value_scroll: usize,
     pub value_view_width: usize,
     pub value_view_height: usize,
+    pub is_editing: bool,
+    pub message: Option<DetailMessage>,
     pub fields: Vec<DetailField>,
 }
 

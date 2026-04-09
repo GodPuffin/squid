@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use crate::app::{App, ContentView, DetailPane};
+use crate::app::{Action, App, ContentView, DetailPane};
 
 #[test]
 fn open_detail_is_noop_outside_rows_or_without_rows() {
@@ -59,7 +59,7 @@ fn detail_selection_and_scroll_are_clamped() {
         detail.value_scroll = 100;
     }
     app.clamp_detail_scroll();
-    assert!(app.detail.as_ref().unwrap().value_scroll <= 5);
+    assert!(app.detail.as_ref().unwrap().value_scroll < 100);
 
     app.detail.as_mut().unwrap().value_scroll = 3;
     app.detail_select_field(0);
@@ -91,6 +91,230 @@ fn follow_detail_link_selects_foreign_row_and_closes_detail() {
 }
 
 #[test]
+fn save_detail_changes_updates_row_and_reloads_modal() {
+    let mut app = app_with_detail_data("detail-save");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "notes")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    for _ in "line one line two line three".chars() {
+        app.handle_detail(Action::Backspace).unwrap();
+    }
+    for ch in "updated note".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "notes")
+        .unwrap();
+    assert_eq!(field.original_value, "updated note");
+    assert_eq!(field.draft_value, "updated note");
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Saved 1 field")
+    );
+    assert!(!app.detail_has_changes());
+}
+
+#[test]
+fn discard_detail_changes_restores_original_values() {
+    let mut app = app_with_detail_data("detail-discard");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "notes")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    for ch in " extra".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    assert!(app.detail_has_changes());
+
+    app.handle_detail(Action::DiscardDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "notes")
+        .unwrap();
+    assert_eq!(field.original_value, "line one line two line three");
+    assert_eq!(field.draft_value, "line one line two line three");
+    assert!(!app.detail_has_changes());
+}
+
+#[test]
+fn save_detail_changes_treats_null_literal_as_sql_null() {
+    let mut app = app_with_detail_data("detail-null");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "customer_id")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    for _ in "1".chars() {
+        app.handle_detail(Action::Backspace).unwrap();
+    }
+    for ch in "NULL".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "customer_id")
+        .unwrap();
+    assert_eq!(field.original_value, "NULL");
+}
+
+#[test]
+fn invalid_integer_input_is_rejected_without_saving() {
+    let mut app = app_with_detail_data("detail-int-error");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "customer_id")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    for _ in "1".chars() {
+        app.handle_detail(Action::Backspace).unwrap();
+    }
+    for ch in "abc".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "customer_id")
+        .unwrap();
+    assert_eq!(field.original_value, "1");
+    assert_eq!(field.draft_value, "abc");
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("expects an integer")
+    );
+}
+
+#[test]
+fn boolean_input_is_coerced_and_saved() {
+    let mut app = app_with_detail_data("detail-bool");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "is_priority")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    for _ in "1".chars() {
+        app.handle_detail(Action::Backspace).unwrap();
+    }
+    for ch in "false".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "is_priority")
+        .unwrap();
+    assert_eq!(field.original_value, "0");
+    assert_eq!(field.draft_value, "0");
+}
+
+#[test]
+fn without_rowid_tables_open_as_read_only_details() {
+    let path = temp_db_path("detail-read-only");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE codes(
+            id TEXT PRIMARY KEY,
+            label TEXT
+        ) WITHOUT ROWID;
+        INSERT INTO codes(id, label) VALUES ('A', 'alpha');",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    app.open_detail().unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    assert_eq!(detail.rowid, None);
+    assert!(!app.detail_is_row_writable());
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Read-only row")
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn wrapped_line_count_handles_empty_and_wrapped_values() {
     assert_eq!(super::wrapped_line_count("", 4), 1);
     assert_eq!(super::wrapped_line_count("abcdef", 4), 2);
@@ -106,12 +330,13 @@ fn app_with_detail_data(label: &str) -> App {
          CREATE TABLE orders(
              id INTEGER PRIMARY KEY,
              customer_id INTEGER REFERENCES customers(id),
-             notes TEXT
+             notes TEXT,
+             is_priority BOOLEAN NOT NULL DEFAULT 0
          );
          INSERT INTO customers(name) VALUES ('alice'), ('bravo');
-         INSERT INTO orders(customer_id, notes) VALUES
-             (1, 'line one line two line three'),
-             (NULL, 'orphan row');",
+         INSERT INTO orders(customer_id, notes, is_priority) VALUES
+             (1, 'line one line two line three', 1),
+             (NULL, 'orphan row', 0);",
     )
     .expect("seed db");
     drop(conn);

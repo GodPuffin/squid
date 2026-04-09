@@ -62,7 +62,15 @@ impl App {
         } else if self.mode == AppMode::Sql {
             return "1 browse  2 sql  Tab cycle panes  F5 or click Run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q or click Quit outside editor".to_string();
         } else if self.detail.is_some() {
-            "Esc/q close  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
+            if self.detail_is_editing() {
+                "Esc stop editing  Type value  Enter newline  Backspace delete".to_string()
+            } else if self.detail_has_changes() {
+                "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key".to_string()
+            } else if self.detail_is_row_writable() {
+                "e edit field  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
+            } else {
+                "Read-only row  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
+            }
         } else if self.filter_modal.is_some() {
             "Esc close  q close outside value input  Left/Right switch pane  Up/Down move  Type value  Enter apply  Delete remove  Space cycle operator".to_string()
         } else if self.modal.is_some() {
@@ -279,11 +287,15 @@ impl App {
             .fields
             .iter()
             .map(|field| {
-                if field.foreign_target.is_some() {
-                    format!("{}  ->", field.column_name)
+                let dirty = if field.is_dirty() { "* " } else { "  " };
+                let suffix = if field.is_blob {
+                    " [blob]"
+                } else if field.foreign_target.is_some() {
+                    " ->"
                 } else {
-                    field.column_name.clone()
-                }
+                    ""
+                };
+                format!("{dirty}{}{}", field.column_name, suffix)
             })
             .collect()
     }
