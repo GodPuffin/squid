@@ -247,6 +247,57 @@ fn invalid_integer_input_is_rejected_without_saving() {
 }
 
 #[test]
+fn numeric_input_is_bound_without_f64_precision_loss() {
+    let path = temp_db_path("detail-numeric");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE metrics(id INTEGER PRIMARY KEY, amount NUMERIC);
+         INSERT INTO metrics(amount) VALUES (0);",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    let table_index = app
+        .tables
+        .iter()
+        .position(|table| table.name == "main.metrics")
+        .unwrap();
+    app.select_table_by_index(table_index).unwrap();
+    app.focus_content();
+    app.open_detail().unwrap();
+
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "amount")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+
+    app.handle_detail(Action::EditDetail).unwrap();
+    app.handle_detail(Action::Backspace).unwrap();
+    for ch in "9007199254740993".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "amount")
+        .unwrap();
+    assert_eq!(field.original_value, "9007199254740993");
+    assert_eq!(field.draft_value, "9007199254740993");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn boolean_input_is_coerced_and_saved() {
     let mut app = app_with_detail_data("detail-bool");
     app.selected_row = 0;

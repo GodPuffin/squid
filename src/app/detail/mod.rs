@@ -583,16 +583,18 @@ fn parse_detail_value(field: &DetailField) -> Result<Value, String> {
             .map(Value::Integer)
             .map_err(|_| format!("{} expects an integer", field.column_name));
     }
-    if data_type.contains("REAL")
-        || data_type.contains("FLOA")
-        || data_type.contains("DOUB")
-        || data_type.contains("NUM")
-        || data_type.contains("DEC")
-    {
+    if data_type.contains("REAL") || data_type.contains("FLOA") || data_type.contains("DOUB") {
         return input
             .parse::<f64>()
             .map(Value::Real)
             .map_err(|_| format!("{} expects a number", field.column_name));
+    }
+    if data_type.contains("NUM") || data_type.contains("DEC") {
+        let numeric_input = input.trim();
+        if numeric_input.parse::<i64>().is_ok() || numeric_input.parse::<f64>().is_ok() {
+            return Ok(Value::Text(field.draft_value.clone()));
+        }
+        return Err(format!("{} expects a number", field.column_name));
     }
 
     Ok(Value::Text(field.draft_value.clone()))
