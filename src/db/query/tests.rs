@@ -71,6 +71,30 @@ fn row_record_uses_hidden_rowid_alias_when_rowid_column_exists() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn row_record_falls_back_to_rowid_when_underscore_rowid_is_shadowed() {
+    let path = temp_db_path("query-shadowed-underscore-rowid");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(_rowid_ TEXT, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(_rowid_, name) VALUES ('x', 'alpha')", [])
+        .expect("insert first");
+    conn.execute("INSERT INTO demo(_rowid_, name) VALUES ('y', 'beta')", [])
+        .expect("insert second");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let record = db
+        .row_record_at_offset("demo", &[], &[], 0)
+        .expect("load row")
+        .expect("record");
+
+    assert_eq!(record.rowid, Some(1));
+    assert_eq!(record.row_label, "rowid 1");
+
+    let _ = fs::remove_file(path);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

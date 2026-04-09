@@ -233,12 +233,21 @@ fn execute_sql_marks_truncated_row_results() {
 fn update_row_values_rejects_ambiguous_rowid_predicates() {
     let path = temp_db_path("row-update-reserved");
     let conn = Connection::open(&path).expect("create db");
-    conn.execute("CREATE TABLE demo(_rowid_ INTEGER, name TEXT)", [])
-        .expect("create table");
-    conn.execute("INSERT INTO demo(_rowid_, name) VALUES (7, 'first')", [])
-        .expect("insert first");
-    conn.execute("INSERT INTO demo(_rowid_, name) VALUES (7, 'second')", [])
-        .expect("insert second");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER, _rowid_ INTEGER, oid INTEGER, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(rowid, _rowid_, oid, name) VALUES (1, 7, 11, 'first')",
+        [],
+    )
+    .expect("insert first");
+    conn.execute(
+        "INSERT INTO demo(rowid, _rowid_, oid, name) VALUES (2, 7, 11, 'second')",
+        [],
+    )
+    .expect("insert second");
     drop(conn);
 
     let db = Database::open(&path).expect("open db");
@@ -253,10 +262,7 @@ fn update_row_values_rejects_ambiguous_rowid_predicates() {
         )
         .expect_err("multi-row updates should be rejected");
 
-    assert!(
-        err.to_string().contains("expected exactly one updated row"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("no hidden rowid alias"), "{err}");
 
     let _ = fs::remove_file(path);
 }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::params;
 
-use super::query::{HIDDEN_ROWID_ALIAS, build_filter_where, quote_identifier, quote_table_name};
+use super::query::{build_filter_where, hidden_rowid_alias, quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, TableSummary};
 
@@ -19,8 +19,10 @@ impl Database {
         }
 
         let safe_table_name = quote_table_name(table_name);
+        let table_columns = self.list_columns(table_name)?;
+        let rowid_alias = hidden_rowid_alias(&table_columns);
         let columns = if visible_columns.is_empty() {
-            self.list_columns(table_name)?
+            table_columns.clone()
         } else {
             visible_columns.to_vec()
         };
@@ -29,6 +31,9 @@ impl Database {
             return Ok(Vec::new());
         }
 
+        let Some(rowid_alias) = rowid_alias else {
+            return Ok(Vec::new());
+        };
         let select_list = columns
             .iter()
             .map(|column| quote_identifier(column))
@@ -36,7 +41,7 @@ impl Database {
             .join(", ");
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
-            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
+            "SELECT {rowid_alias}, {select_list}
              FROM {safe_table_name}
              {where_clause}
              LIMIT ?"
@@ -124,6 +129,9 @@ impl Database {
         if columns.is_empty() {
             return Ok(Vec::new());
         }
+        let Some(rowid_alias) = hidden_rowid_alias(&columns) else {
+            return Ok(Vec::new());
+        };
 
         let safe_table_name = quote_table_name(table_name);
         let select_list = columns
@@ -132,7 +140,7 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
+            "SELECT {rowid_alias}, {select_list}
              FROM {safe_table_name}
              LIMIT ?1"
         );

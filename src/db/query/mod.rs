@@ -4,8 +4,6 @@ use rusqlite::types::Value;
 
 use super::schema::count_rows;
 use super::value::format_value;
-
-pub(crate) const HIDDEN_ROWID_ALIAS: &str = "_rowid_";
 use super::{Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause};
 
 impl Database {
@@ -18,6 +16,7 @@ impl Database {
         limit: usize,
         offset: usize,
     ) -> Result<RowPreview> {
+        let rowid_alias = hidden_rowid_alias(&self.list_columns(table_name)?);
         let safe_table_name = quote_table_name(table_name);
         let columns = if visible_columns.is_empty() {
             self.list_columns(table_name)?
@@ -32,8 +31,31 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
         let order_by = build_order_by(sort_clauses);
+        let Some(rowid_alias) = rowid_alias else {
+            let sql = format!(
+                "SELECT {select_list} FROM {safe_table_name}{where_clause}{order_by} LIMIT ? OFFSET ?"
+            );
+            filter_params.push(Value::Integer(limit as i64));
+            filter_params.push(Value::Integer(offset as i64));
+            let mut stmt = self.conn.prepare(&sql)?;
+            let column_count = stmt.column_count();
+            let row_iter = stmt
+                .query_map(params_from_iter(filter_params.iter()), |row| {
+                    let mut values = Vec::with_capacity(column_count);
+                    for idx in 0..column_count {
+                        values.push(format_value(row.get_ref(idx)?));
+                    }
+                    Ok((None::<i64>, values))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(RowPreview {
+                columns,
+                rows: row_iter.into_iter().map(|(_, values)| values).collect(),
+                total_rows,
+            });
+        };
         let sql = format!(
-            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list} FROM {safe_table_name}{where_clause}{order_by} LIMIT ? OFFSET ?"
+            "SELECT {rowid_alias}, {select_list} FROM {safe_table_name}{where_clause}{order_by} LIMIT ? OFFSET ?"
         );
         filter_params.push(Value::Integer(limit as i64));
         filter_params.push(Value::Integer(offset as i64));
@@ -61,7 +83,7 @@ impl Database {
                     for idx in 0..column_count {
                         values.push(format_value(row.get_ref(idx)?));
                     }
-                    Ok((None, values))
+                    Ok((None::<i64>, values))
                 })?
                 .collect::<Result<Vec<_>, _>>()?
             }
@@ -95,10 +117,45 @@ impl Database {
             .map(|column| quote_identifier(column))
             .collect::<Vec<_>>()
             .join(", ");
-        let order_by = build_order_by_or_rowid(sort_clauses);
+        let Some(rowid_alias) = hidden_rowid_alias(&columns) else {
+            let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
+            let fallback_sql = format!(
+                "SELECT {select_list}
+                 FROM {safe_table_name}
+                 {where_clause}
+                 {}
+                 LIMIT 1 OFFSET ?",
+                build_order_by(sort_clauses)
+            );
+            filter_params.push(Value::Integer(offset as i64));
+            let mut fallback_stmt = self.conn.prepare(&fallback_sql)?;
+            let mut rows = fallback_stmt.query(params_from_iter(filter_params.iter()))?;
+            let Some(row) = rows.next()? else {
+                return Ok(None);
+            };
+            let fields = columns
+                .iter()
+                .enumerate()
+                .map(|(idx, column)| {
+                    let value = row.get_ref(idx)?;
+                    Ok(RowField {
+                        column_name: column.clone(),
+                        value: format_value(value),
+                        is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
+                    })
+                })
+                .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+            return Ok(Some(RowRecord {
+                rowid: None,
+                row_label: format!("row {}", offset + 1),
+                fields,
+                foreign_keys: self.foreign_key_info(table_name)?,
+            }));
+        };
+        let order_by = build_order_by_or_rowid(sort_clauses, rowid_alias);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
-            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
+            "SELECT {rowid_alias}, {select_list}
              FROM {safe_table_name}
              {where_clause}
              {order_by}
@@ -178,7 +235,14 @@ impl Database {
     ) -> Result<Option<usize>> {
         let safe_table_name = quote_table_name(table_name);
         let safe_column_name = quote_identifier(column_name);
-        let order_by = build_order_by_or_rowid(sort_clauses);
+        let rowid_alias = hidden_rowid_alias(&self.list_columns(table_name)?);
+        let order_by = if sort_clauses.is_empty() {
+            rowid_alias
+                .map(|alias| format!("ORDER BY {alias} ASC"))
+                .unwrap_or_else(|| "ORDER BY 1 ASC".to_string())
+        } else {
+            build_order_by(sort_clauses).trim_start().to_string()
+        };
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
             "SELECT rn
@@ -214,16 +278,19 @@ impl Database {
         filter_clauses: &[FilterClause],
     ) -> Result<Option<usize>> {
         let safe_table_name = quote_table_name(table_name);
-        let order_by = build_order_by_or_rowid(sort_clauses);
+        let Some(rowid_alias) = hidden_rowid_alias(&self.list_columns(table_name)?) else {
+            return Ok(None);
+        };
+        let order_by = build_order_by_or_rowid(sort_clauses, rowid_alias);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
             "SELECT rn
              FROM (
-                 SELECT {HIDDEN_ROWID_ALIAS}, ROW_NUMBER() OVER ({order_by}) - 1 AS rn
+                 SELECT {rowid_alias}, ROW_NUMBER() OVER ({order_by}) - 1 AS rn
                  FROM {safe_table_name}
                  {where_clause}
              )
-             WHERE {HIDDEN_ROWID_ALIAS} = ?"
+             WHERE {rowid_alias} = ?"
         );
         filter_params.push(Value::Integer(rowid));
 
@@ -314,12 +381,21 @@ pub(crate) fn build_order_by(sort_clauses: &[SortClause]) -> String {
     }
 }
 
-pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause]) -> String {
+pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause], rowid_alias: &str) -> String {
     if sort_clauses.is_empty() {
-        format!("ORDER BY {HIDDEN_ROWID_ALIAS} ASC")
+        format!("ORDER BY {rowid_alias} ASC")
     } else {
         build_order_by(sort_clauses).trim_start().to_string()
     }
+}
+
+pub(crate) fn hidden_rowid_alias(columns: &[String]) -> Option<&'static str> {
+    const CANDIDATES: [&str; 3] = ["_rowid_", "rowid", "oid"];
+    CANDIDATES.into_iter().find(|candidate| {
+        !columns
+            .iter()
+            .any(|column| column.eq_ignore_ascii_case(candidate))
+    })
 }
 
 #[cfg(test)]
