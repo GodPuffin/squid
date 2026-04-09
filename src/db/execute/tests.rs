@@ -302,7 +302,7 @@ fn update_row_values_updates_matching_hidden_rowid() {
     drop(conn);
 
     let db = Database::open(&path).expect("open db");
-    let updated_rows = db
+    let updated_rowid = db
         .update_row_values(
             "demo",
             1,
@@ -313,7 +313,7 @@ fn update_row_values_updates_matching_hidden_rowid() {
         )
         .expect("update should succeed");
 
-    assert_eq!(updated_rows, 1);
+    assert_eq!(updated_rowid, 1);
 
     let verify = Connection::open(&path).expect("reopen");
     let values = verify
@@ -339,7 +339,7 @@ fn update_row_values_supports_schema_qualified_table_names() {
     drop(conn);
 
     let db = Database::open(&path).expect("open db");
-    let updated_rows = db
+    let updated_rowid = db
         .update_row_values(
             "main.demo",
             1,
@@ -349,7 +349,7 @@ fn update_row_values_supports_schema_qualified_table_names() {
             )],
         )
         .expect("qualified update should succeed");
-    assert_eq!(updated_rows, 1);
+    assert_eq!(updated_rowid, 1);
 
     let verify = Connection::open(&path).expect("reopen");
     let value = verify
@@ -358,6 +358,38 @@ fn update_row_values_supports_schema_qualified_table_names() {
         })
         .expect("select");
     assert_eq!(value, "updated");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_returns_new_rowid_when_primary_key_changes() {
+    let path = temp_db_path("row-update-rowid-alias");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "demo",
+            1,
+            &[("id".to_string(), rusqlite::types::Value::Integer(10))],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rowid, 10);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE id = 10", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "alpha");
 
     let _ = fs::remove_file(path);
 }

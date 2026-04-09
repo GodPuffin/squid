@@ -427,10 +427,10 @@ impl App {
             .db_ref()?
             .update_row_values(&table_name, rowid, &changes)
         {
-            Ok(_) => {
+            Ok(updated_rowid) => {
                 let offset = self.db_ref()?.locate_row_offset(
                     &table_name,
-                    rowid,
+                    updated_rowid,
                     &self.current_sort_clauses(),
                     &self.current_filter_clauses(),
                 )?;

@@ -12,9 +12,9 @@ impl Database {
         table_name: &str,
         rowid: i64,
         changes: &[(String, Value)],
-    ) -> Result<usize> {
+    ) -> Result<i64> {
         if changes.is_empty() {
-            return Ok(0);
+            return Ok(rowid);
         }
 
         let rowid_column = "_rowid_";
@@ -25,7 +25,9 @@ impl Database {
             .join(", ");
         let table_name = quote_table_name(table_name);
 
-        let sql = format!("UPDATE {table_name} SET {assignments} WHERE {rowid_column} = ?");
+        let sql = format!(
+            "UPDATE {table_name} SET {assignments} WHERE {rowid_column} = ? RETURNING {rowid_column}"
+        );
 
         let mut params = changes
             .iter()
@@ -33,12 +35,18 @@ impl Database {
             .collect::<Vec<_>>();
         params.push(Value::Integer(rowid));
 
-        let updated_rows = self.conn.execute(&sql, params_from_iter(params.iter()))?;
-        if updated_rows != 1 {
-            bail!("refusing to update: expected exactly one updated row, updated {updated_rows}");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let Some(row) = rows.next()? else {
+            bail!("refusing to update: expected exactly one updated row, updated 0");
+        };
+        let updated_rowid = row.get::<_, i64>(0)?;
+
+        if rows.next()?.is_some() {
+            bail!("refusing to update: expected exactly one updated row, updated multiple");
         }
 
-        Ok(updated_rows)
+        Ok(updated_rowid)
     }
 
     pub fn execute_sql(&self, sql: &str, row_limit: usize) -> Result<SqlExecutionResult> {
