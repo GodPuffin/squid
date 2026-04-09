@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::params;
+use rusqlite::{params_from_iter, types::Value};
 
 use super::query::{build_filter_where, hidden_rowid_alias, quote_identifier, quote_table_name};
 use super::value::format_value;
@@ -31,48 +31,38 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let Some(rowid_alias) = rowid_alias else {
-            return Ok(Vec::new());
-        };
         let select_list = columns
             .iter()
             .map(|column| quote_identifier(column))
             .collect::<Vec<_>>()
             .join(", ");
-        let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
-        let sql = format!(
-            "SELECT {rowid_alias}, {select_list}
-             FROM {safe_table_name}
-             {where_clause}
-             LIMIT ?"
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let column_count = stmt.column_count().saturating_sub(1);
+        let (where_clause, filter_params) = build_filter_where(filter_clauses);
         let scan_limit = i64::try_from(limit.saturating_mul(10)).unwrap_or(i64::MAX);
-        filter_params.push(rusqlite::types::Value::Integer(scan_limit));
-
-        let row_iter = stmt.query_map(rusqlite::params_from_iter(filter_params.iter()), |row| {
-            let rowid = row.get::<_, i64>(0)?;
-            let mut values = Vec::with_capacity(column_count);
-            for idx in 0..column_count {
-                values.push(format_value(row.get_ref(idx + 1)?));
-            }
-            Ok((rowid, values))
-        })?;
+        let row_iter = self.scan_search_rows(
+            &safe_table_name,
+            &select_list,
+            &where_clause,
+            &filter_params,
+            scan_limit,
+            rowid_alias,
+        )?;
 
         let mut results = Vec::new();
-        for row in row_iter {
-            let (rowid, values) = row?;
+        for (index, row) in row_iter.into_iter().enumerate() {
+            let (rowid, values) = row;
             let summary = render_search_summary(&columns, &values);
             let matched_columns = values
                 .iter()
                 .map(|value| fuzzy_score(value, query).is_some())
                 .collect::<Vec<_>>();
             if let Some(score) = fuzzy_score(&summary, query) {
+                let row_label = rowid
+                    .map(|rowid| format!("rowid {rowid}"))
+                    .unwrap_or_else(|| format!("row {}", index + 1));
                 results.push(SearchHit {
                     table_name: table_name.to_string(),
-                    rowid: Some(rowid),
-                    row_label: format!("rowid {rowid}"),
+                    rowid,
+                    row_label,
                     values,
                     matched_columns,
                     haystack: summary,
@@ -129,9 +119,7 @@ impl Database {
         if columns.is_empty() {
             return Ok(Vec::new());
         }
-        let Some(rowid_alias) = hidden_rowid_alias(&columns) else {
-            return Ok(Vec::new());
-        };
+        let rowid_alias = hidden_rowid_alias(&columns);
 
         let safe_table_name = quote_table_name(table_name);
         let select_list = columns
@@ -139,37 +127,29 @@ impl Database {
             .map(|column| quote_identifier(column))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!(
-            "SELECT {rowid_alias}, {select_list}
-             FROM {safe_table_name}
-             LIMIT ?1"
-        );
-        let mut stmt = match self.conn.prepare(&sql) {
-            Ok(stmt) => stmt,
-            Err(_) => return Ok(Vec::new()),
-        };
-        let column_count = stmt.column_count().saturating_sub(1);
         let scan_limit = i64::try_from(limit.saturating_mul(20)).unwrap_or(i64::MAX);
         let query_lower = query.to_lowercase();
-
-        let row_iter = stmt.query_map(params![scan_limit], |row| {
-            let rowid = row.get::<_, i64>(0)?;
-            let mut values = Vec::with_capacity(column_count);
-            for idx in 0..column_count {
-                values.push(format_value(row.get_ref(idx + 1)?));
-            }
-            Ok((rowid, values))
-        })?;
+        let row_iter = self.scan_search_rows(
+            &safe_table_name,
+            &select_list,
+            "",
+            &[],
+            scan_limit,
+            rowid_alias,
+        )?;
 
         let mut results = Vec::new();
-        for row in row_iter {
-            let (rowid, values) = row?;
+        for (index, row) in row_iter.into_iter().enumerate() {
+            let (rowid, values) = row;
             let summary = values.join(" | ");
             if let Some(score) = exact_match_score(&summary, &query_lower) {
+                let row_label = rowid
+                    .map(|rowid| format!("rowid {rowid}"))
+                    .unwrap_or_else(|| format!("row {}", index + 1));
                 results.push(SearchHit {
                     table_name: table_name.to_string(),
-                    rowid: Some(rowid),
-                    row_label: format!("rowid {rowid}"),
+                    rowid,
+                    row_label,
                     values: Vec::new(),
                     matched_columns: Vec::new(),
                     haystack: summary,
@@ -186,6 +166,58 @@ impl Database {
         });
         results.truncate(limit);
         Ok(results)
+    }
+
+    fn scan_search_rows(
+        &self,
+        safe_table_name: &str,
+        select_list: &str,
+        where_clause: &str,
+        filter_params: &[Value],
+        scan_limit: i64,
+        rowid_alias: Option<&str>,
+    ) -> Result<Vec<(Option<i64>, Vec<String>)>> {
+        if let Some(rowid_alias) = rowid_alias {
+            let sql = format!(
+                "SELECT {rowid_alias}, {select_list}
+                 FROM {safe_table_name}
+                 {where_clause}
+                 LIMIT ?"
+            );
+            if let Ok(mut stmt) = self.conn.prepare(&sql) {
+                let column_count = stmt.column_count().saturating_sub(1);
+                let mut params = filter_params.to_vec();
+                params.push(Value::Integer(scan_limit));
+                let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
+                    let rowid = row.get::<_, i64>(0)?;
+                    let mut values = Vec::with_capacity(column_count);
+                    for idx in 0..column_count {
+                        values.push(format_value(row.get_ref(idx + 1)?));
+                    }
+                    Ok((Some(rowid), values))
+                })?;
+                return Ok(rows.collect::<Result<Vec<_>, _>>()?);
+            }
+        }
+
+        let sql = format!(
+            "SELECT {select_list}
+             FROM {safe_table_name}
+             {where_clause}
+             LIMIT ?"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let column_count = stmt.column_count();
+        let mut params = filter_params.to_vec();
+        params.push(Value::Integer(scan_limit));
+        let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
+            let mut values = Vec::with_capacity(column_count);
+            for idx in 0..column_count {
+                values.push(format_value(row.get_ref(idx)?));
+            }
+            Ok((None, values))
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 }
 
