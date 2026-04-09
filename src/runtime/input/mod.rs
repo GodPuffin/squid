@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::{Action, App, AppMode, FilterPane, SqlPane};
+use crate::app::{Action, App, AppMode, DetailPane, FilterPane, SqlPane};
 
 pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     if app.mode == AppMode::Sql {
@@ -43,6 +43,12 @@ fn detail_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('e') => Action::EditDetail,
         KeyCode::Char('s') => Action::SaveDetail,
         KeyCode::Char('c') => Action::DiscardDetail,
+        KeyCode::Enter
+            if app.detail_pane() == Some(DetailPane::Value)
+                && app.detail_selected_field_is_editable() =>
+        {
+            Action::EditDetail
+        }
         KeyCode::Enter => Action::Confirm,
         _ => Action::None,
     }

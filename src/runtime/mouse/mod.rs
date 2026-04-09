@@ -224,7 +224,16 @@ pub fn handle_mouse_event(
                 } else if let Some(index) = ui::list_row_at(detail.fields, column, row) {
                     app.detail_select_field(index);
                 } else if contains(detail.value, column, row) {
+                    if app.detail_is_editing() {
+                        return Ok(false);
+                    }
+                    let should_edit = app.detail_pane() == Some(crate::app::DetailPane::Value)
+                        && !app.detail_is_editing()
+                        && app.detail_selected_field_is_editable();
                     app.detail_focus_value();
+                    if should_edit {
+                        app.handle(Action::EditDetail)?;
+                    }
                 }
             }
             MouseEventKind::ScrollUp => {

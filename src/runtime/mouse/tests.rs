@@ -188,7 +188,7 @@ fn outside_click_closes_filter_modal() {
 }
 
 #[test]
-fn detail_footer_save_button_applies_row_changes() {
+fn detail_header_save_button_applies_row_changes() {
     let mut app = app_with_mouse_data("mouse-detail-save");
     app.focus_content();
     app.handle(Action::Confirm).unwrap();
@@ -233,6 +233,48 @@ fn detail_footer_save_button_applies_row_changes() {
         .unwrap();
     assert_eq!(field.original_value, "cara");
     assert!(!app.detail_has_changes());
+}
+
+#[test]
+fn clicking_value_pane_twice_starts_editing() {
+    let mut app = app_with_mouse_data("mouse-detail-edit");
+    app.focus_content();
+    app.handle(Action::Confirm).unwrap();
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let detail = layout.detail.as_ref().unwrap();
+    let mut state = MouseState::default();
+    let click = mouse_down(detail.value.x + 1, detail.value.y + 1);
+
+    handle_mouse_event(&mut app, &layout, click, &mut state, Instant::now()).unwrap();
+    assert_eq!(app.detail_pane(), Some(crate::app::DetailPane::Value));
+    assert!(!app.detail_is_editing());
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let detail = layout.detail.as_ref().unwrap();
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(detail.value.x + 1, detail.value.y + 1),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert!(app.detail_is_editing());
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let detail = layout.detail.as_ref().unwrap();
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(detail.value.x + 1, detail.value.y + 1),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert!(app.detail_is_editing());
 }
 
 fn app_with_mouse_data(label: &str) -> App {

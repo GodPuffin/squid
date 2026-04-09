@@ -199,14 +199,14 @@ fn render_header_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_footer_bar(frame: &mut Frame, app: &App, area: Rect) {
     let text = if app.detail_has_changes() {
         if app.detail_is_editing() {
-            "Esc stop editing, then use Save or Discard above"
+            "Type to edit  Enter newline  Backspace delete  Esc stop editing"
         } else {
-            "Pending row changes  Save or Discard above"
+            "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key"
         }
     } else if app.detail_is_editing() {
         "Type to edit  Enter newline  Backspace delete  Esc stop editing"
     } else if app.detail_is_row_writable() {
-        "e edit field  Up/Down field  Left/Right pane  g follow foreign key"
+        "e edit field  Enter edit focused value  Up/Down field  Left/Right pane  g follow foreign key"
     } else {
         "Read-only row  Up/Down field  Left/Right pane  g follow foreign key"
     };

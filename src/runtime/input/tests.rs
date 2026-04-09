@@ -108,6 +108,10 @@ fn detail_modal_shortcuts_switch_between_edit_and_save_actions() {
         action_for_key(&app, KeyEvent::from(KeyCode::Char('s'))),
         Action::SaveDetail
     );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Enter)),
+        Action::EditDetail
+    );
 
     app.detail.as_mut().unwrap().is_editing = true;
     assert_eq!(

@@ -62,6 +62,10 @@ impl App {
             && self.detail_is_row_writable()
     }
 
+    pub fn detail_pane(&self) -> Option<DetailPane> {
+        self.detail.as_ref().map(|detail| detail.pane)
+    }
+
     pub(super) fn handle_detail(&mut self, action: Action) -> Result<()> {
         match action {
             Action::CloseModal | Action::Quit => self.detail = None,
@@ -521,9 +525,6 @@ pub(crate) fn detail_value_text(detail: &DetailState, field: &DetailField) -> St
         },
         if field.not_null { "  NOT NULL" } else { "" }
     ));
-    if !field.is_blob {
-        lines.push(type_input_hint(field));
-    }
     lines.push(String::new());
 
     if detail.is_editing || field.is_dirty() {
@@ -603,24 +604,6 @@ fn parse_bool_value(column_name: &str, input: &str) -> Result<Value, String> {
         "1" | "true" | "t" | "yes" | "y" | "on" => Ok(Value::Integer(1)),
         "0" | "false" | "f" | "no" | "n" | "off" => Ok(Value::Integer(0)),
         _ => Err(format!("{column_name} expects true/false or 1/0")),
-    }
-}
-
-fn type_input_hint(field: &DetailField) -> String {
-    let data_type = field.data_type.to_ascii_uppercase();
-    if data_type.contains("BOOL") {
-        "Allowed values: true/false or 1/0. Use NULL only if the column is nullable.".to_string()
-    } else if data_type.contains("INT") {
-        "Expected value: integer. Use NULL only if the column is nullable.".to_string()
-    } else if data_type.contains("REAL")
-        || data_type.contains("FLOA")
-        || data_type.contains("DOUB")
-        || data_type.contains("NUM")
-        || data_type.contains("DEC")
-    {
-        "Expected value: number. Use NULL only if the column is nullable.".to_string()
-    } else {
-        "Text value. Type NULL exactly to store a SQL null in nullable columns.".to_string()
     }
 }
 
