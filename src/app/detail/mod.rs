@@ -25,7 +25,6 @@ impl App {
     pub fn detail_focus_value(&mut self) {
         if let Some(detail) = &mut self.detail {
             detail.pane = DetailPane::Value;
-            detail.is_editing = false;
         }
     }
 

@@ -4,6 +4,8 @@ use rusqlite::types::Value;
 
 use super::schema::count_rows;
 use super::value::format_value;
+
+pub(crate) const HIDDEN_ROWID_ALIAS: &str = "_rowid_";
 use super::{Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause};
 
 impl Database {
@@ -31,7 +33,7 @@ impl Database {
             .join(", ");
         let order_by = build_order_by(sort_clauses);
         let sql = format!(
-            "SELECT rowid, {select_list} FROM {safe_table_name}{where_clause}{order_by} LIMIT ? OFFSET ?"
+            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list} FROM {safe_table_name}{where_clause}{order_by} LIMIT ? OFFSET ?"
         );
         filter_params.push(Value::Integer(limit as i64));
         filter_params.push(Value::Integer(offset as i64));
@@ -96,7 +98,7 @@ impl Database {
         let order_by = build_order_by_or_rowid(sort_clauses);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
-            "SELECT rowid, {select_list}
+            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
              FROM {safe_table_name}
              {where_clause}
              {order_by}
@@ -217,11 +219,11 @@ impl Database {
         let sql = format!(
             "SELECT rn
              FROM (
-                 SELECT rowid, ROW_NUMBER() OVER ({order_by}) - 1 AS rn
+                 SELECT {HIDDEN_ROWID_ALIAS}, ROW_NUMBER() OVER ({order_by}) - 1 AS rn
                  FROM {safe_table_name}
                  {where_clause}
              )
-             WHERE rowid = ?"
+             WHERE {HIDDEN_ROWID_ALIAS} = ?"
         );
         filter_params.push(Value::Integer(rowid));
 
@@ -314,7 +316,7 @@ pub(crate) fn build_order_by(sort_clauses: &[SortClause]) -> String {
 
 pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause]) -> String {
     if sort_clauses.is_empty() {
-        "ORDER BY rowid ASC".to_string()
+        format!("ORDER BY {HIDDEN_ROWID_ALIAS} ASC")
     } else {
         build_order_by(sort_clauses).trim_start().to_string()
     }

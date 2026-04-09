@@ -315,6 +315,29 @@ fn without_rowid_tables_open_as_read_only_details() {
 }
 
 #[test]
+fn detail_focus_value_keeps_existing_edit_mode() {
+    let mut app = app_with_detail_data("detail-focus-edit");
+    app.selected_row = 0;
+    app.open_detail().unwrap();
+
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "notes")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.detail_focus_value();
+    app.handle_detail(Action::EditDetail).unwrap();
+
+    assert!(app.detail_is_editing());
+    app.detail_focus_value();
+    assert!(app.detail_is_editing());
+}
+
+#[test]
 fn wrapped_line_count_handles_empty_and_wrapped_values() {
     assert_eq!(super::wrapped_line_count("", 4), 1);
     assert_eq!(super::wrapped_line_count("abcdef", 4), 2);

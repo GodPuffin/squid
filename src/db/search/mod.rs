@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::params;
 
-use super::query::{build_filter_where, quote_identifier, quote_table_name};
+use super::query::{HIDDEN_ROWID_ALIAS, build_filter_where, quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, TableSummary};
 
@@ -36,7 +36,7 @@ impl Database {
             .join(", ");
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
-            "SELECT rowid, {select_list}
+            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
              FROM {safe_table_name}
              {where_clause}
              LIMIT ?"
@@ -132,7 +132,7 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "SELECT rowid, {select_list}
+            "SELECT {HIDDEN_ROWID_ALIAS}, {select_list}
              FROM {safe_table_name}
              LIMIT ?1"
         );
