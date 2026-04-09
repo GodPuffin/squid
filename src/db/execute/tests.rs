@@ -229,6 +229,139 @@ fn execute_sql_marks_truncated_row_results() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn update_row_values_rejects_ambiguous_rowid_predicates() {
+    let path = temp_db_path("row-update-reserved");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(_rowid_ INTEGER, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(_rowid_, name) VALUES (7, 'first')", [])
+        .expect("insert first");
+    conn.execute("INSERT INTO demo(_rowid_, name) VALUES (7, 'second')", [])
+        .expect("insert second");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("multi-row updates should be rejected");
+
+    assert!(
+        err.to_string().contains("expected exactly one updated row"),
+        "{err}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_rejects_missing_rowid() {
+    let path = temp_db_path("row-update-missing");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("insert");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            999,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("missing row should be rejected");
+
+    assert!(
+        err.to_string().contains("expected exactly one updated row"),
+        "{err}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_updates_matching_hidden_rowid() {
+    let path = temp_db_path("row-update-hidden");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rows = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rows, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let values = verify
+        .prepare("SELECT name FROM demo ORDER BY id")
+        .expect("prepare")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect");
+    assert_eq!(values, vec!["updated".to_string(), "beta".to_string()]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_supports_schema_qualified_table_names() {
+    let path = temp_db_path("row-update-qualified");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rows = db
+        .update_row_values(
+            "main.demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("qualified update should succeed");
+    assert_eq!(updated_rows, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE id = 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "updated");
+
+    let _ = fs::remove_file(path);
+}
+
 fn read_only_uri(path: &Path) -> PathBuf {
     PathBuf::from(format!("file:{}?mode=ro", path.display()))
 }

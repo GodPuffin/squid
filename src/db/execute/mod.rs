@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 
@@ -17,15 +17,15 @@ impl Database {
             return Ok(0);
         }
 
+        let rowid_column = "_rowid_";
         let assignments = changes
             .iter()
             .map(|(column_name, _)| format!("{} = ?", quote_identifier(column_name)))
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!(
-            "UPDATE {} SET {assignments} WHERE rowid = ?",
-            quote_table_name(table_name)
-        );
+        let table_name = quote_table_name(table_name);
+
+        let sql = format!("UPDATE {table_name} SET {assignments} WHERE {rowid_column} = ?");
 
         let mut params = changes
             .iter()
@@ -33,7 +33,12 @@ impl Database {
             .collect::<Vec<_>>();
         params.push(Value::Integer(rowid));
 
-        Ok(self.conn.execute(&sql, params_from_iter(params.iter()))?)
+        let updated_rows = self.conn.execute(&sql, params_from_iter(params.iter()))?;
+        if updated_rows != 1 {
+            bail!("refusing to update: expected exactly one updated row, updated {updated_rows}");
+        }
+
+        Ok(updated_rows)
     }
 
     pub fn execute_sql(&self, sql: &str, row_limit: usize) -> Result<SqlExecutionResult> {
