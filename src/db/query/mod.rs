@@ -4,7 +4,9 @@ use rusqlite::types::Value;
 
 use super::schema::count_rows;
 use super::value::format_value;
-use super::{Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause};
+use super::{
+    ColumnInfo, Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause,
+};
 
 impl Database {
     pub fn preview_table(
@@ -16,7 +18,7 @@ impl Database {
         limit: usize,
         offset: usize,
     ) -> Result<RowPreview> {
-        let rowid_alias = hidden_rowid_alias(&self.list_columns(table_name)?);
+        let rowid_alias = self.rowid_alias(table_name)?;
         let safe_table_name = quote_table_name(table_name);
         let columns = if visible_columns.is_empty() {
             self.list_columns(table_name)?
@@ -106,10 +108,14 @@ impl Database {
         filter_clauses: &[FilterClause],
         offset: usize,
     ) -> Result<Option<RowRecord>> {
-        let columns = self.list_columns(table_name)?;
-        if columns.is_empty() {
+        let column_info = self.column_info(table_name)?;
+        if column_info.is_empty() {
             return Ok(None);
         }
+        let columns = column_info
+            .iter()
+            .map(|column| column.name.clone())
+            .collect::<Vec<_>>();
 
         let safe_table_name = quote_table_name(table_name);
         let select_list = columns
@@ -117,7 +123,7 @@ impl Database {
             .map(|column| quote_identifier(column))
             .collect::<Vec<_>>()
             .join(", ");
-        let Some(rowid_alias) = hidden_rowid_alias(&columns) else {
+        let Some(rowid_alias) = rowid_alias_from_columns(&column_info) else {
             let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
             let fallback_sql = format!(
                 "SELECT {select_list}
@@ -235,7 +241,7 @@ impl Database {
     ) -> Result<Option<usize>> {
         let safe_table_name = quote_table_name(table_name);
         let safe_column_name = quote_identifier(column_name);
-        let rowid_alias = hidden_rowid_alias(&self.list_columns(table_name)?);
+        let rowid_alias = self.rowid_alias(table_name)?;
         let order_by = build_window_order_by(sort_clauses, rowid_alias);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
@@ -272,7 +278,7 @@ impl Database {
         filter_clauses: &[FilterClause],
     ) -> Result<Option<usize>> {
         let safe_table_name = quote_table_name(table_name);
-        let Some(rowid_alias) = hidden_rowid_alias(&self.list_columns(table_name)?) else {
+        let Some(rowid_alias) = self.rowid_alias(table_name)? else {
             return Ok(None);
         };
         let order_by = build_order_by_or_rowid(sort_clauses, rowid_alias);
@@ -379,6 +385,12 @@ pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause], rowid_alias: 
     build_window_order_by(sort_clauses, Some(rowid_alias))
 }
 
+impl Database {
+    pub(crate) fn rowid_alias(&self, table_name: &str) -> Result<Option<&'static str>> {
+        Ok(rowid_alias_from_columns(&self.column_info(table_name)?))
+    }
+}
+
 pub(crate) fn build_window_order_by(
     sort_clauses: &[SortClause],
     rowid_alias: Option<&str>,
@@ -392,12 +404,31 @@ pub(crate) fn build_window_order_by(
     }
 }
 
-pub(crate) fn hidden_rowid_alias(columns: &[String]) -> Option<&'static str> {
+pub(crate) fn rowid_alias_from_columns(columns: &[ColumnInfo]) -> Option<&'static str> {
     const CANDIDATES: [&str; 3] = ["_rowid_", "rowid", "oid"];
+
+    if columns
+        .iter()
+        .filter(|column| column.is_primary_key)
+        .count()
+        == 1
+        && let Some(column) = columns.iter().find(|column| {
+            column.is_primary_key
+                && column.data_type.eq_ignore_ascii_case("INTEGER")
+                && CANDIDATES
+                    .iter()
+                    .any(|candidate| column.name.eq_ignore_ascii_case(candidate))
+        })
+    {
+        return CANDIDATES
+            .into_iter()
+            .find(|candidate| column.name.eq_ignore_ascii_case(candidate));
+    }
+
     CANDIDATES.into_iter().find(|candidate| {
         !columns
             .iter()
-            .any(|column| column.eq_ignore_ascii_case(candidate))
+            .any(|column| column.name.eq_ignore_ascii_case(candidate))
     })
 }
 

@@ -97,6 +97,34 @@ fn search_tables_keeps_hits_when_rowid_aliases_are_shadowed() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn search_table_uses_integer_primary_key_named_rowid_even_when_other_aliases_are_shadowed() {
+    let path = temp_db_path("search-explicit-rowid-primary-key");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER PRIMARY KEY, _rowid_ TEXT, oid TEXT, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(_rowid_, oid, name) VALUES ('shadow', 'shadow-oid', 'alpha')",
+        [],
+    )
+    .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let results = db
+        .search_table("demo", &["name".to_string()], &[], &[], "alp", 10)
+        .expect("search table");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].rowid, Some(1));
+    assert_eq!(results[0].row_label, "rowid 1");
+
+    let _ = fs::remove_file(path);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow, bail};
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 
-use super::query::{hidden_rowid_alias, quote_identifier, quote_table_name};
+use super::query::{quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, SqlExecutionResult};
 
@@ -17,10 +17,9 @@ impl Database {
             return Ok(rowid);
         }
 
-        let rowid_column =
-            hidden_rowid_alias(&self.list_columns(table_name)?).ok_or_else(|| {
-                anyhow!("row updates are unavailable because this table has no hidden rowid alias")
-            })?;
+        let rowid_column = self.rowid_alias(table_name)?.ok_or_else(|| {
+            anyhow!("row updates are unavailable because this table has no usable rowid alias")
+        })?;
         let assignments = changes
             .iter()
             .map(|(column_name, _)| format!("{} = ?", quote_identifier(column_name)))

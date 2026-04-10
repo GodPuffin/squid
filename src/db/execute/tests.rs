@@ -262,7 +262,48 @@ fn update_row_values_rejects_ambiguous_rowid_predicates() {
         )
         .expect_err("multi-row updates should be rejected");
 
-    assert!(err.to_string().contains("no hidden rowid alias"), "{err}");
+    assert!(err.to_string().contains("no usable rowid alias"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_supports_integer_primary_key_named_rowid() {
+    let path = temp_db_path("row-update-explicit-rowid-primary-key");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER PRIMARY KEY, _rowid_ TEXT, oid TEXT, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(_rowid_, oid, name) VALUES ('shadow', 'shadow-oid', 'alpha')",
+        [],
+    )
+    .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rowid, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE rowid = 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "updated");
 
     let _ = fs::remove_file(path);
 }

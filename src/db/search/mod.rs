@@ -1,9 +1,7 @@
 use anyhow::Result;
 use rusqlite::{params_from_iter, types::Value};
 
-use super::query::{
-    build_filter_where, build_order_by, hidden_rowid_alias, quote_identifier, quote_table_name,
-};
+use super::query::{build_filter_where, build_order_by, quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, SortClause, TableSummary};
 
@@ -23,7 +21,7 @@ impl Database {
 
         let safe_table_name = quote_table_name(table_name);
         let table_columns = self.list_columns(table_name)?;
-        let rowid_alias = hidden_rowid_alias(&table_columns);
+        let rowid_alias = self.rowid_alias(table_name)?;
         let columns = if visible_columns.is_empty() {
             table_columns.clone()
         } else {
@@ -125,7 +123,7 @@ impl Database {
         if columns.is_empty() {
             return Ok(Vec::new());
         }
-        let rowid_alias = hidden_rowid_alias(&columns);
+        let rowid_alias = self.rowid_alias(table_name)?;
 
         let safe_table_name = quote_table_name(table_name);
         let select_list = columns

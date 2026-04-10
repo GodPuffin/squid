@@ -107,6 +107,66 @@ fn row_record_falls_back_to_rowid_when_underscore_rowid_is_shadowed() {
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn rowid_primary_key_named_rowid_still_supports_locate_row_offset() {
+    let path = temp_db_path("query-explicit-rowid-primary-key");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER PRIMARY KEY, _rowid_ TEXT, oid TEXT, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(_rowid_, oid, name) VALUES ('shadow', 'shadow-oid', 'alpha')",
+        [],
+    )
+    .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let record = db
+        .row_record_at_offset("demo", &[], &[], 0)
+        .expect("load row")
+        .expect("record");
+
+    assert_eq!(record.rowid, Some(1));
+    assert_eq!(record.row_label, "rowid 1");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn row_record_uses_integer_primary_key_named_rowid_even_when_other_aliases_are_shadowed() {
+    let path = temp_db_path("query-rowid-ipk-shadowed");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER PRIMARY KEY, _rowid_ TEXT, oid TEXT, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(_rowid_, oid, name) VALUES ('shadow', 'shadow-two', 'alpha')",
+        [],
+    )
+    .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let record = db
+        .row_record_at_offset("demo", &[], &[], 0)
+        .expect("load row")
+        .expect("record");
+
+    assert_eq!(record.rowid, Some(1));
+    assert_eq!(record.row_label, "rowid 1");
+    assert_eq!(
+        db.locate_row_offset("demo", 1, &[], &[]).expect("locate"),
+        Some(0)
+    );
+
+    let _ = fs::remove_file(path);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
