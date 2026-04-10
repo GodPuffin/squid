@@ -1,8 +1,8 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::app::{App, ContentView, PaneFocus};
 
@@ -106,13 +106,22 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .map(|_| Constraint::Min(12))
         .collect();
 
-    let header =
-        Row::new(std::iter::once("#".to_string()).chain(app.preview.columns.iter().cloned()))
-            .style(Style::default().add_modifier(Modifier::BOLD));
+    let header = Row::new(
+        std::iter::once(Cell::from("#")).chain(
+            app.preview
+                .columns
+                .iter()
+                .map(|column| Cell::from(column.as_str())),
+        ),
+    )
+    .style(Style::default().add_modifier(Modifier::BOLD));
 
     let rows = app.preview.rows.iter().enumerate().map(|(idx, row)| {
         let row_number = app.row_offset + idx + 1;
-        Row::new(std::iter::once(row_number.to_string()).chain(row.iter().cloned()))
+        Row::new(
+            std::iter::once(Cell::from(row_number.to_string()))
+                .chain(row.iter().map(|value| Cell::from(value.as_str()))),
+        )
     });
 
     let mut all_widths = vec![Constraint::Length(6)];
@@ -149,7 +158,12 @@ fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
         .into_iter()
         .map(|line| {
             if in_create_sql {
-                return Line::from(highlight_sql_line(&line));
+                return Line::from(
+                    highlight_sql_line(&line)
+                        .into_iter()
+                        .map(|span| Span::styled(span.content.into_owned(), span.style))
+                        .collect::<Vec<_>>(),
+                );
             }
 
             if line == "Create SQL" {

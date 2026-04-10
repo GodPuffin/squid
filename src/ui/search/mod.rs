@@ -36,7 +36,6 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .iter()
         .skip(search.result_offset)
         .take(search.result_limit)
-        .cloned()
         .collect::<Vec<_>>();
 
     let items: Vec<ListItem<'_>> = if visible_results.is_empty() && !search.submitted {
@@ -54,7 +53,7 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
                             .fg(Color::Cyan)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(hit.row_label.clone(), Style::default().fg(Color::Gray)),
+                    Span::styled(hit.row_label.as_str(), Style::default().fg(Color::Gray)),
                     Span::raw("  "),
                 ];
                 spans.extend(highlight_spans(&hit.haystack, &search.query));
@@ -79,7 +78,7 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     };
     let headers = app.search_headers();
     let widths: Vec<Constraint> = headers.iter().map(|_| Constraint::Min(12)).collect();
-    let header = Row::new(std::iter::once("#".to_string()).chain(headers.iter().cloned()))
+    let header = Row::new(std::iter::once("#").chain(headers.iter().map(String::as_str)))
         .style(Style::default().add_modifier(Modifier::BOLD));
 
     let rows = search
@@ -88,16 +87,16 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
         .skip(search.result_offset)
         .take(search.result_limit)
         .map(|hit| {
-            let styled_cells = std::iter::once(Cell::from(hit.row_label.clone())).chain(
+            let styled_cells = std::iter::once(Cell::from(hit.row_label.as_str())).chain(
                 hit.values.iter().enumerate().map(|(idx, value)| {
                     if hit.matched_columns.get(idx).copied().unwrap_or(false) {
-                        Cell::from(value.clone()).style(
+                        Cell::from(value.as_str()).style(
                             Style::default()
                                 .fg(Color::LightYellow)
                                 .add_modifier(Modifier::BOLD),
                         )
                     } else {
-                        Cell::from(value.clone())
+                        Cell::from(value.as_str())
                     }
                 }),
             );
@@ -118,28 +117,40 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-fn highlight_spans(haystack: &str, query: &str) -> Vec<Span<'static>> {
+fn highlight_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
     if query.is_empty() {
-        return vec![Span::raw(haystack.to_string())];
+        return vec![Span::raw(haystack)];
     }
 
     let positions = fuzzy_match_positions(haystack, query);
-    haystack
-        .chars()
-        .enumerate()
-        .map(|(idx, ch)| {
-            if positions.contains(&idx) {
-                Span::styled(
-                    ch.to_string(),
-                    Style::default()
-                        .fg(Color::LightYellow)
-                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-                )
-            } else {
-                Span::raw(ch.to_string())
+    if positions.is_empty() {
+        return vec![Span::raw(haystack)];
+    }
+
+    let mut spans = Vec::new();
+    let mut normal_start = 0usize;
+
+    for (char_idx, (byte_start, ch)) in haystack.char_indices().enumerate() {
+        if positions.binary_search(&char_idx).is_ok() {
+            if normal_start < byte_start {
+                spans.push(Span::raw(&haystack[normal_start..byte_start]));
             }
-        })
-        .collect::<Vec<_>>()
+            let byte_end = byte_start + ch.len_utf8();
+            spans.push(Span::styled(
+                &haystack[byte_start..byte_end],
+                Style::default()
+                    .fg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+            ));
+            normal_start = byte_end;
+        }
+    }
+
+    if normal_start < haystack.len() {
+        spans.push(Span::raw(&haystack[normal_start..]));
+    }
+
+    spans
 }
 
 fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {

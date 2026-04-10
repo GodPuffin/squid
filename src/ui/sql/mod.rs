@@ -31,11 +31,16 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
         .skip(app.sql.editor_scroll)
         .take(app.sql.editor_height)
         .map(|line| {
-            Line::from(highlight_sql_line(&visible_editor_slice(
-                line,
-                app.sql.editor_col_offset,
-                width,
-            )))
+            Line::from(
+                highlight_sql_line(&visible_editor_slice(
+                    line,
+                    app.sql.editor_col_offset,
+                    width,
+                ))
+                .into_iter()
+                .map(|span| Span::styled(span.content.into_owned(), span.style))
+                .collect::<Vec<_>>(),
+            )
         })
         .collect::<Vec<_>>();
 
@@ -111,7 +116,7 @@ fn render_results(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default().fg(Color::LightGreen)
             };
-            let message = Paragraph::new(Line::from(Span::styled(text.clone(), style)))
+            let message = Paragraph::new(Line::from(Span::styled(text.as_str(), style)))
                 .block(panel_block("Results", app.sql_focus() == SqlPane::Results))
                 .wrap(Wrap { trim: true });
             frame.render_widget(message, area);
@@ -127,11 +132,11 @@ fn render_result_table(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|_| Constraint::Min(12))
         .collect::<Vec<_>>();
-    let header =
-        Row::new(columns.iter().cloned()).style(Style::default().add_modifier(Modifier::BOLD));
+    let header = Row::new(columns.iter().map(|column| column.as_str()))
+        .style(Style::default().add_modifier(Modifier::BOLD));
     let body = rows
         .iter()
-        .map(|row| Row::new(row.iter().cloned().map(Cell::from)));
+        .map(|row| Row::new(row.iter().map(|value| Cell::from(value.as_str()))));
     let table = Table::new(body, widths)
         .header(header)
         .block(panel_block("Results", app.sql_focus() == SqlPane::Results))
@@ -167,7 +172,7 @@ fn render_completion(frame: &mut Frame, app: &App, editor_area: Rect, popup_rect
     let list = List::new(
         completion.items[start..end]
             .iter()
-            .map(|item| ListItem::new(item.label.clone()))
+            .map(|item| ListItem::new(item.label.as_str()))
             .collect::<Vec<_>>(),
     )
     .block(panel_block("Completion", true))
