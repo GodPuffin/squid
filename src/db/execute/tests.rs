@@ -111,6 +111,25 @@ fn open_read_only_database_allows_selects() {
 }
 
 #[test]
+fn open_read_only_database_reports_non_writable_main_table() {
+    let path = temp_db_path("readonly-flag");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+
+    assert!(
+        !db.table_is_writable("main.demo")
+            .expect("check writability")
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn execute_sql_reports_read_only_write_failures() {
     let path = temp_db_path("readonly-write");
     let conn = Connection::open(&path).expect("create db");
@@ -225,6 +244,246 @@ fn execute_sql_marks_truncated_row_results() {
         }
         SqlExecutionResult::Statement { .. } => panic!("expected rows"),
     }
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_rejects_ambiguous_rowid_predicates() {
+    let path = temp_db_path("row-update-reserved");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER, _rowid_ INTEGER, oid INTEGER, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(rowid, _rowid_, oid, name) VALUES (1, 7, 11, 'first')",
+        [],
+    )
+    .expect("insert first");
+    conn.execute(
+        "INSERT INTO demo(rowid, _rowid_, oid, name) VALUES (2, 7, 11, 'second')",
+        [],
+    )
+    .expect("insert second");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("multi-row updates should be rejected");
+
+    assert!(err.to_string().contains("no usable rowid alias"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_rejects_read_only_databases() {
+    let path = temp_db_path("row-update-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("read-only updates should be rejected");
+
+    assert!(err.to_string().contains("read-only"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_supports_integer_primary_key_named_rowid() {
+    let path = temp_db_path("row-update-explicit-rowid-primary-key");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(rowid INTEGER PRIMARY KEY, _rowid_ TEXT, oid TEXT, name TEXT)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO demo(_rowid_, oid, name) VALUES ('shadow', 'shadow-oid', 'alpha')",
+        [],
+    )
+    .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rowid, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE rowid = 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "updated");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_rejects_missing_rowid() {
+    let path = temp_db_path("row-update-missing");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("insert");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            999,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("missing row should be rejected");
+
+    assert!(
+        err.to_string().contains("expected exactly one updated row"),
+        "{err}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_updates_matching_hidden_rowid() {
+    let path = temp_db_path("row-update-hidden");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rowid, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let values = verify
+        .prepare("SELECT name FROM demo ORDER BY id")
+        .expect("prepare")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect");
+    assert_eq!(values, vec!["updated".to_string(), "beta".to_string()]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_supports_schema_qualified_table_names() {
+    let path = temp_db_path("row-update-qualified");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "main.demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect("qualified update should succeed");
+    assert_eq!(updated_rowid, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE id = 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "updated");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_returns_new_rowid_when_primary_key_changes() {
+    let path = temp_db_path("row-update-rowid-alias");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let updated_rowid = db
+        .update_row_values(
+            "demo",
+            1,
+            &[("id".to_string(), rusqlite::types::Value::Integer(10))],
+        )
+        .expect("update should succeed");
+
+    assert_eq!(updated_rowid, 10);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE id = 10", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "alpha");
 
     let _ = fs::remove_file(path);
 }

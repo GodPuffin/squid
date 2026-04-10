@@ -220,6 +220,9 @@ impl App {
             | Action::ToggleView
             | Action::OpenConfig
             | Action::ToggleItem
+            | Action::EditDetail
+            | Action::SaveDetail
+            | Action::DiscardDetail
             | Action::FollowLink
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll

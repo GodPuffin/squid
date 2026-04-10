@@ -1,5 +1,5 @@
 mod core;
-mod detail;
+pub(crate) mod detail;
 mod filter;
 mod home;
 mod modal;
@@ -17,9 +17,9 @@ use crate::db::{Database, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
 pub use state::{
-    AppMode, DetailField, DetailForeignTarget, DetailPane, DetailState, FilterModalState,
-    FilterPane, ModalPane, ModalState, SearchScope, SearchState, SqlCompletionItem,
-    SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState, SqlState,
+    AppMode, DetailField, DetailForeignTarget, DetailMessage, DetailPane, DetailState,
+    FilterModalState, FilterPane, ModalPane, ModalState, SearchScope, SearchState,
+    SqlCompletionItem, SqlCompletionState, SqlHistoryEntry, SqlPane, SqlResultState, SqlState,
 };
 pub use table_config::{FilterRule, SortRule, TableConfig};
 
@@ -62,6 +62,9 @@ pub enum Action {
     ToggleItem,
     Confirm,
     FollowLink,
+    EditDetail,
+    SaveDetail,
+    DiscardDetail,
     Delete,
     Clear,
     Reload,

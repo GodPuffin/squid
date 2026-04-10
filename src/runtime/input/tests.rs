@@ -6,7 +6,10 @@ use crossterm::event::{KeyCode, KeyEvent};
 use rusqlite::Connection;
 
 use super::action_for_key;
-use crate::app::{Action, App, AppMode, FilterModalState, FilterPane, SearchScope, SearchState};
+use crate::app::{
+    Action, App, AppMode, DetailField, DetailPane, DetailState, FilterModalState, FilterPane,
+    SearchScope, SearchState,
+};
 
 #[test]
 fn root_digit_shortcuts_still_switch_modes() {
@@ -70,6 +73,54 @@ fn sql_editor_accepts_q_and_digits_as_text() {
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('1'))),
         Action::InputChar('1')
+    );
+}
+
+#[test]
+fn detail_modal_shortcuts_switch_between_edit_and_save_actions() {
+    let mut app = test_app("detail-input");
+    app.detail = Some(DetailState {
+        rowid: Some(1),
+        row_label: "rowid 1".to_string(),
+        pane: DetailPane::Value,
+        selected_field: 0,
+        value_scroll: 0,
+        value_view_width: 40,
+        value_view_height: 10,
+        is_editing: false,
+        message: None,
+        fields: vec![DetailField {
+            column_name: "name".to_string(),
+            data_type: "TEXT".to_string(),
+            not_null: false,
+            original_value: "alice".to_string(),
+            draft_value: "alice".to_string(),
+            foreign_target: None,
+            is_blob: false,
+        }],
+    });
+
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('e'))),
+        Action::EditDetail
+    );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('s'))),
+        Action::SaveDetail
+    );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Enter)),
+        Action::EditDetail
+    );
+
+    app.detail.as_mut().unwrap().is_editing = true;
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('s'))),
+        Action::InputChar('s')
+    );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Enter)),
+        Action::NewLine
     );
 }
 

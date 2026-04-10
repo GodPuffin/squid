@@ -1,9 +1,59 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
+use rusqlite::params_from_iter;
+use rusqlite::types::Value;
 
+use super::query::{quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, SqlExecutionResult};
 
 impl Database {
+    pub fn update_row_values(
+        &self,
+        table_name: &str,
+        rowid: i64,
+        changes: &[(String, Value)],
+    ) -> Result<i64> {
+        if !self.table_is_writable(table_name)? {
+            bail!("row updates are unavailable because this database is read-only");
+        }
+        if changes.is_empty() {
+            return Ok(rowid);
+        }
+
+        let rowid_column = self.rowid_alias(table_name)?.ok_or_else(|| {
+            anyhow!("row updates are unavailable because this table has no usable rowid alias")
+        })?;
+        let assignments = changes
+            .iter()
+            .map(|(column_name, _)| format!("{} = ?", quote_identifier(column_name)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let table_name = quote_table_name(table_name);
+
+        let sql = format!(
+            "UPDATE {table_name} SET {assignments} WHERE {rowid_column} = ? RETURNING {rowid_column}"
+        );
+
+        let mut params = changes
+            .iter()
+            .map(|(_, value)| value.clone())
+            .collect::<Vec<_>>();
+        params.push(Value::Integer(rowid));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let Some(row) = rows.next()? else {
+            bail!("refusing to update: expected exactly one updated row, updated 0");
+        };
+        let updated_rowid = row.get::<_, i64>(0)?;
+
+        if rows.next()?.is_some() {
+            bail!("refusing to update: expected exactly one updated row, updated multiple");
+        }
+
+        Ok(updated_rowid)
+    }
+
     pub fn execute_sql(&self, sql: &str, row_limit: usize) -> Result<SqlExecutionResult> {
         let sql = sql.trim();
         if sql.is_empty() {

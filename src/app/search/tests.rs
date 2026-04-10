@@ -61,6 +61,7 @@ fn select_result_in_view_uses_absolute_index_and_confirm_jumps() {
             SearchHit {
                 table_name: "main.customers".to_string(),
                 rowid: Some(1),
+                row_offset: 0,
                 row_label: "rowid 1".to_string(),
                 values: Vec::new(),
                 matched_columns: Vec::new(),
@@ -70,6 +71,7 @@ fn select_result_in_view_uses_absolute_index_and_confirm_jumps() {
             SearchHit {
                 table_name: "main.orders".to_string(),
                 rowid: Some(1),
+                row_offset: 0,
                 row_label: "rowid 1".to_string(),
                 values: Vec::new(),
                 matched_columns: Vec::new(),
@@ -87,6 +89,32 @@ fn select_result_in_view_uses_absolute_index_and_confirm_jumps() {
     app.handle_search(Action::Confirm).unwrap();
     assert!(app.search.is_none());
     assert_eq!(app.focus, crate::app::PaneFocus::Content);
+}
+
+#[test]
+fn current_table_search_can_jump_without_rowid_alias() {
+    let path = temp_db_path("search-shadowed-jump");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE demo(rowid INTEGER, _rowid_ INTEGER, oid INTEGER, name TEXT);
+         INSERT INTO demo(rowid, _rowid_, oid, name) VALUES
+             (10, 20, 30, 'alpha'),
+             (11, 21, 31, 'bravo');",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    app.handle_search(Action::InputChar('a')).unwrap();
+    app.handle_search(Action::InputChar('l')).unwrap();
+    app.handle_search(Action::Confirm).unwrap();
+
+    assert!(app.search.is_none());
+    assert_eq!(app.selected_row, 0);
+
+    let _ = fs::remove_file(path);
 }
 
 #[test]

@@ -7,8 +7,9 @@ mod value;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, MAIN_DB, OpenFlags};
 
+use crate::db::query::split_qualified_table_name;
 use crate::db::schema::schema_catalog_table;
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,7 @@ pub struct FilterClause {
 pub struct SearchHit {
     pub table_name: String,
     pub rowid: Option<i64>,
+    pub row_offset: usize,
     pub row_label: String,
     pub values: Vec<String>,
     pub matched_columns: Vec<bool>,
@@ -82,9 +84,17 @@ pub struct ForeignKeyInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct RowField {
+    pub column_name: String,
+    pub value: String,
+    pub is_blob: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct RowRecord {
+    pub rowid: Option<i64>,
     pub row_label: String,
-    pub fields: Vec<(String, String)>,
+    pub fields: Vec<RowField>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
 }
 
@@ -131,8 +141,14 @@ impl Database {
                 })?
             }
         };
-
         Ok(Self { conn })
+    }
+
+    pub fn table_is_writable(&self, table_name: &str) -> Result<bool> {
+        let schema = split_qualified_table_name(table_name)
+            .map(|(schema, _)| schema)
+            .unwrap_or_else(|| MAIN_DB.to_str().unwrap_or("main"));
+        Ok(!self.conn.is_readonly(schema)?)
     }
 
     pub fn list_tables(&self) -> Result<Vec<TableSummary>> {
