@@ -125,6 +125,90 @@ fn search_table_uses_integer_primary_key_named_rowid_even_when_other_aliases_are
     let _ = fs::remove_file(path);
 }
 
+#[test]
+fn search_table_finds_match_beyond_previous_scan_window() {
+    let path = temp_db_path("search-current-table-exhaustive");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(name TEXT)", [])
+        .expect("create table");
+    for idx in 0..200 {
+        let value = if idx == 175 {
+            "match target"
+        } else {
+            "filler value"
+        };
+        conn.execute("INSERT INTO demo(name) VALUES (?1)", [value])
+            .expect("insert row");
+    }
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let results = db
+        .search_table("demo", &["name".to_string()], &[], &[], "target", 10)
+        .expect("search table");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].values, vec!["match target"]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn search_tables_finds_match_beyond_previous_scan_window() {
+    let path = temp_db_path("search-all-tables-exhaustive");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(name TEXT)", [])
+        .expect("create table");
+    for idx in 0..250 {
+        let value = if idx == 220 {
+            "cross table match"
+        } else {
+            "filler value"
+        };
+        conn.execute("INSERT INTO demo(name) VALUES (?1)", [value])
+            .expect("insert row");
+    }
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let results = db
+        .search_tables(
+            &[TableSummary {
+                name: "demo".to_string(),
+            }],
+            "cross table match",
+            10,
+        )
+        .expect("search tables");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].values, vec!["cross table match"]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn search_table_scores_against_full_values_not_truncated_preview() {
+    let path = temp_db_path("search-full-value-scoring");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(note TEXT)", [])
+        .expect("create table");
+    let long_text = format!("{}needle", "a".repeat(120));
+    conn.execute("INSERT INTO demo(note) VALUES (?1)", [&long_text])
+        .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let results = db
+        .search_table("demo", &["note".to_string()], &[], &[], "needle", 10)
+        .expect("search table");
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].haystack.contains("needle"));
+
+    let _ = fs::remove_file(path);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

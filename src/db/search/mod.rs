@@ -15,7 +15,7 @@ impl Database {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchHit>> {
-        if query.trim().is_empty() {
+        if query.trim().is_empty() || limit == 0 {
             return Ok(Vec::new());
         }
 
@@ -39,14 +39,13 @@ impl Database {
             .join(", ");
         let (where_clause, filter_params) = build_filter_where(filter_clauses);
         let order_by = build_order_by(sort_clauses);
-        let scan_limit = i64::try_from(limit.saturating_mul(10)).unwrap_or(i64::MAX);
         let row_iter = self.scan_search_rows(
             &safe_table_name,
             &select_list,
             &where_clause,
             &order_by,
             &filter_params,
-            scan_limit,
+            None,
             rowid_alias,
         )?;
 
@@ -115,7 +114,7 @@ impl Database {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchHit>> {
-        if query.trim().is_empty() {
+        if query.trim().is_empty() || limit == 0 {
             return Ok(Vec::new());
         }
 
@@ -131,7 +130,6 @@ impl Database {
             .map(|column| quote_identifier(column))
             .collect::<Vec<_>>()
             .join(", ");
-        let scan_limit = i64::try_from(limit.saturating_mul(20)).unwrap_or(i64::MAX);
         let query_lower = query.to_lowercase();
         let row_iter = self.scan_search_rows(
             &safe_table_name,
@@ -139,7 +137,7 @@ impl Database {
             "",
             "",
             &[],
-            scan_limit,
+            None,
             rowid_alias,
         )?;
 
@@ -181,21 +179,28 @@ impl Database {
         where_clause: &str,
         order_by: &str,
         filter_params: &[Value],
-        scan_limit: i64,
+        scan_limit: Option<i64>,
         rowid_alias: Option<&str>,
     ) -> Result<Vec<(Option<i64>, Vec<String>)>> {
+        let limit_clause = scan_limit
+            .map(|_| "LIMIT ?")
+            .unwrap_or_default()
+            .to_string();
+
         if let Some(rowid_alias) = rowid_alias {
             let sql = format!(
                 "SELECT {rowid_alias}, {select_list}
                  FROM {safe_table_name}
                  {where_clause}
                  {order_by}
-                 LIMIT ?"
+                 {limit_clause}"
             );
             if let Ok(mut stmt) = self.conn.prepare(&sql) {
                 let column_count = stmt.column_count().saturating_sub(1);
                 let mut params = filter_params.to_vec();
-                params.push(Value::Integer(scan_limit));
+                if let Some(scan_limit) = scan_limit {
+                    params.push(Value::Integer(scan_limit));
+                }
                 let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
                     let rowid = row.get::<_, i64>(0)?;
                     let mut values = Vec::with_capacity(column_count);
@@ -213,12 +218,14 @@ impl Database {
              FROM {safe_table_name}
              {where_clause}
              {order_by}
-             LIMIT ?"
+             {limit_clause}"
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let column_count = stmt.column_count();
         let mut params = filter_params.to_vec();
-        params.push(Value::Integer(scan_limit));
+        if let Some(scan_limit) = scan_limit {
+            params.push(Value::Integer(scan_limit));
+        }
         let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
             let mut values = Vec::with_capacity(column_count);
             for idx in 0..column_count {
@@ -234,19 +241,9 @@ fn render_search_summary(columns: &[String], values: &[String]) -> String {
     columns
         .iter()
         .zip(values.iter())
-        .map(|(column, value)| format!("{column}: {}", truncate_search_value(value)))
+        .map(|(column, value)| format!("{column}: {value}"))
         .collect::<Vec<_>>()
         .join(" | ")
-}
-
-fn truncate_search_value(value: &str) -> String {
-    const MAX: usize = 80;
-    if value.chars().count() <= MAX {
-        value.to_string()
-    } else {
-        let truncated: String = value.chars().take(MAX.saturating_sub(1)).collect();
-        format!("{truncated}…")
-    }
 }
 
 pub(crate) fn fuzzy_score(haystack: &str, query: &str) -> Option<i64> {
