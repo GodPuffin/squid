@@ -402,8 +402,11 @@ fn read_only_attached_tables_open_details_without_edit_affordances() {
     let attached_path = temp_db_path("detail-attached-readonly");
 
     let conn = Connection::open(&main_path).expect("create main db");
-    conn.execute("CREATE TABLE local_items(id INTEGER PRIMARY KEY, label TEXT)", [])
-        .expect("create main table");
+    conn.execute(
+        "CREATE TABLE local_items(id INTEGER PRIMARY KEY, label TEXT)",
+        [],
+    )
+    .expect("create main table");
     conn.execute("INSERT INTO local_items(label) VALUES ('local')", [])
         .expect("seed main table");
     drop(conn);

@@ -121,7 +121,10 @@ fn open_read_only_database_reports_non_writable_main_table() {
     let uri = read_only_uri(&path);
     let db = Database::open(uri.as_path()).expect("open db");
 
-    assert!(!db.table_is_writable("main.demo").expect("check writability"));
+    assert!(
+        !db.table_is_writable("main.demo")
+            .expect("check writability")
+    );
 
     let _ = fs::remove_file(path);
 }
