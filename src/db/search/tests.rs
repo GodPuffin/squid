@@ -215,6 +215,12 @@ fn bounded_scan_limit_preserves_overscan_for_large_requested_limits() {
     assert_eq!(scan_limit, 3_000_000);
 }
 
+#[test]
+fn bounded_scan_limit_does_not_hard_cap_when_limit_requires_more_than_cap() {
+    let scan_limit = bounded_scan_limit(3_000, 100, 1_000, 25_000);
+    assert_eq!(scan_limit, 300_000);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
