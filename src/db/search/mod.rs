@@ -268,7 +268,7 @@ fn render_search_summary(columns: &[String], values: &[String]) -> String {
 
 fn bounded_scan_limit(limit: usize, multiplier: usize, min_rows: usize, max_rows: usize) -> i64 {
     let expanded = limit.saturating_mul(multiplier);
-    let bounded = expanded.max(min_rows).min(max_rows);
+    let bounded = expanded.max(min_rows).min(max_rows).max(limit);
     i64::try_from(bounded).unwrap_or(i64::MAX)
 }
 

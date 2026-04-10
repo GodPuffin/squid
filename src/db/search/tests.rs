@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use super::{Database, exact_match_score, fuzzy_score};
+use super::{Database, bounded_scan_limit, exact_match_score, fuzzy_score};
 use crate::db::TableSummary;
 
 #[test]
@@ -207,6 +207,12 @@ fn search_table_scores_against_full_values_not_truncated_preview() {
     assert!(results[0].haystack.contains("needle"));
 
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn bounded_scan_limit_never_drops_below_requested_limit() {
+    let scan_limit = bounded_scan_limit(30_000, 100, 1_000, 25_000);
+    assert_eq!(scan_limit, 30_000);
 }
 
 fn temp_db_path(label: &str) -> PathBuf {
