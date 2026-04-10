@@ -111,6 +111,22 @@ fn open_read_only_database_allows_selects() {
 }
 
 #[test]
+fn open_read_only_database_reports_non_writable_main_table() {
+    let path = temp_db_path("readonly-flag");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+
+    assert!(!db.table_is_writable("main.demo").expect("check writability"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn execute_sql_reports_read_only_write_failures() {
     let path = temp_db_path("readonly-write");
     let conn = Connection::open(&path).expect("create db");
@@ -263,6 +279,34 @@ fn update_row_values_rejects_ambiguous_rowid_predicates() {
         .expect_err("multi-row updates should be rejected");
 
     assert!(err.to_string().contains("no usable rowid alias"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn update_row_values_rejects_read_only_databases() {
+    let path = temp_db_path("row-update-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+    let err = db
+        .update_row_values(
+            "demo",
+            1,
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("updated".to_string()),
+            )],
+        )
+        .expect_err("read-only updates should be rejected");
+
+    assert!(err.to_string().contains("read-only"), "{err}");
 
     let _ = fs::remove_file(path);
 }

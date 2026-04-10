@@ -13,6 +13,9 @@ impl Database {
         rowid: i64,
         changes: &[(String, Value)],
     ) -> Result<i64> {
+        if !self.table_is_writable(table_name)? {
+            bail!("row updates are unavailable because this database is read-only");
+        }
         if changes.is_empty() {
             return Ok(rowid);
         }

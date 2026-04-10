@@ -46,11 +46,22 @@ impl App {
             .is_some_and(|detail| detail.fields.iter().any(DetailField::is_dirty))
     }
 
+    pub fn detail_database_is_writable(&self) -> bool {
+        self.selected_table_name()
+            .and_then(|table_name| {
+                self.db
+                    .as_ref()
+                    .and_then(|db| db.table_is_writable(table_name).ok())
+            })
+            .unwrap_or(false)
+    }
+
     pub fn detail_is_row_writable(&self) -> bool {
         self.detail
             .as_ref()
             .and_then(|detail| detail.rowid)
             .is_some()
+            && self.detail_database_is_writable()
     }
 
     pub fn detail_selected_field_is_editable(&self) -> bool {
@@ -121,6 +132,7 @@ impl App {
         let Some(record) = record else {
             return Ok(());
         };
+        let table_is_writable = self.db_ref()?.table_is_writable(&table_name)?;
 
         let rowid = record.rowid;
         let column_meta = self
@@ -183,10 +195,17 @@ impl App {
             value_view_width: super::DEFAULT_DETAIL_VALUE_WIDTH,
             value_view_height: super::DEFAULT_DETAIL_VALUE_HEIGHT,
             is_editing: false,
-            message: rowid.is_none().then(|| DetailMessage {
-                text: "Read-only row: rowid is unavailable for this table view".to_string(),
-                is_error: false,
-            }),
+            message: match (rowid, table_is_writable) {
+                (None, _) => Some(DetailMessage {
+                    text: "Read-only row: rowid is unavailable for this table view".to_string(),
+                    is_error: false,
+                }),
+                (Some(_), false) => Some(DetailMessage {
+                    text: "Read-only database: this row cannot be edited".to_string(),
+                    is_error: false,
+                }),
+                (Some(_), true) => None,
+            },
             fields,
         });
 
@@ -266,6 +285,7 @@ impl App {
     }
 
     fn toggle_detail_editing(&mut self) {
+        let database_is_writable = self.detail_database_is_writable();
         let Some(detail) = &mut self.detail else {
             return;
         };
@@ -285,6 +305,13 @@ impl App {
         if detail.rowid.is_none() {
             detail.message = Some(DetailMessage {
                 text: "This row is read-only and cannot be edited".to_string(),
+                is_error: true,
+            });
+            return;
+        }
+        if !database_is_writable {
+            detail.message = Some(DetailMessage {
+                text: "This database is read-only and cannot be edited".to_string(),
                 is_error: true,
             });
             return;
@@ -380,6 +407,15 @@ impl App {
         let Some(detail) = &self.detail else {
             return Ok(());
         };
+        if !self.detail_database_is_writable() {
+            if let Some(detail) = &mut self.detail {
+                detail.message = Some(DetailMessage {
+                    text: "This row cannot be saved because the database is read-only".to_string(),
+                    is_error: true,
+                });
+            }
+            return Ok(());
+        }
         let Some(rowid) = detail.rowid else {
             if let Some(detail) = &mut self.detail {
                 detail.message = Some(DetailMessage {

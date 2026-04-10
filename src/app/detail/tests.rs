@@ -366,6 +366,90 @@ fn without_rowid_tables_open_as_read_only_details() {
 }
 
 #[test]
+fn read_only_databases_open_details_without_edit_affordances() {
+    let path = temp_db_path("detail-readonly-db");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('alpha')", [])
+        .expect("seed db");
+    drop(conn);
+
+    let uri = PathBuf::from(format!("file:{}?mode=ro", path.display()));
+    let mut app = App::load(uri).expect("load app");
+    app.focus_content();
+    app.open_detail().unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    assert_eq!(detail.rowid, Some(1));
+    assert!(!app.detail_database_is_writable());
+    assert!(!app.detail_is_row_writable());
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Read-only database")
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn read_only_attached_tables_open_details_without_edit_affordances() {
+    let main_path = temp_db_path("detail-attached-main");
+    let attached_path = temp_db_path("detail-attached-readonly");
+
+    let conn = Connection::open(&main_path).expect("create main db");
+    conn.execute("CREATE TABLE local_items(id INTEGER PRIMARY KEY, label TEXT)", [])
+        .expect("create main table");
+    conn.execute("INSERT INTO local_items(label) VALUES ('local')", [])
+        .expect("seed main table");
+    drop(conn);
+
+    let conn = Connection::open(&attached_path).expect("create attached db");
+    conn.execute("CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT)", [])
+        .expect("create attached table");
+    conn.execute("INSERT INTO items(label) VALUES ('remote')", [])
+        .expect("seed attached table");
+    drop(conn);
+
+    let mut app = App::load(main_path.clone()).expect("load app");
+    app.db
+        .as_ref()
+        .unwrap()
+        .execute_sql(
+            &format!(
+                "ATTACH DATABASE 'file:{}?mode=ro' AS other",
+                attached_path.display()
+            ),
+            10,
+        )
+        .expect("attach readonly schema");
+    app.refresh_loaded_db_state().expect("refresh tables");
+    app.select_table_by_name("other.items").unwrap();
+    app.focus_content();
+    app.open_detail().unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    assert_eq!(detail.rowid, Some(1));
+    assert!(!app.detail_database_is_writable());
+    assert!(!app.detail_is_row_writable());
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Read-only database")
+    );
+
+    let _ = fs::remove_file(main_path);
+    let _ = fs::remove_file(attached_path);
+}
+
+#[test]
 fn detail_focus_value_keeps_existing_edit_mode() {
     let mut app = app_with_detail_data("detail-focus-edit");
     app.selected_row = 0;
