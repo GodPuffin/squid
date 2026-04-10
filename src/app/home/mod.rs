@@ -265,8 +265,7 @@ fn sqlite_uri_local_path(path: &Path) -> Option<PathBuf> {
 }
 
 fn sqlite_uri_local_path_part(uri_path: &str) -> Option<String> {
-    if uri_path.starts_with("//") {
-        let authority_and_path = &uri_path["//".len()..];
+    if let Some(authority_and_path) = uri_path.strip_prefix("//") {
         let (authority, path) = match authority_and_path.split_once('/') {
             Some((authority, path)) => (authority, format!("/{path}")),
             None => (authority_and_path, "/".to_string()),
@@ -356,7 +355,7 @@ fn path_to_storage_bytes(path: &Path) -> Vec<u8> {
 
 #[cfg(windows)]
 fn path_from_storage_bytes(bytes: &[u8]) -> Result<PathBuf> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         anyhow::bail!("recent database entry has an odd number of UTF-16 bytes");
     }
 

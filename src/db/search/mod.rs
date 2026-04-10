@@ -5,6 +5,15 @@ use super::query::{build_filter_where, build_order_by, quote_identifier, quote_t
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, SortClause, TableSummary};
 
+struct SearchScan<'a> {
+    safe_table_name: &'a str,
+    select_list: &'a str,
+    where_clause: &'a str,
+    order_by: &'a str,
+    scan_limit: i64,
+    rowid_alias: Option<&'a str>,
+}
+
 impl Database {
     pub fn search_table(
         &self,
@@ -41,13 +50,15 @@ impl Database {
         let order_by = build_order_by(sort_clauses);
         let scan_limit = i64::try_from(limit.saturating_mul(10)).unwrap_or(i64::MAX);
         let row_iter = self.scan_search_rows(
-            &safe_table_name,
-            &select_list,
-            &where_clause,
-            &order_by,
+            SearchScan {
+                safe_table_name: &safe_table_name,
+                select_list: &select_list,
+                where_clause: &where_clause,
+                order_by: &order_by,
+                scan_limit,
+                rowid_alias,
+            },
             &filter_params,
-            scan_limit,
-            rowid_alias,
         )?;
 
         let mut results = Vec::new();
@@ -134,13 +145,15 @@ impl Database {
         let scan_limit = i64::try_from(limit.saturating_mul(20)).unwrap_or(i64::MAX);
         let query_lower = query.to_lowercase();
         let row_iter = self.scan_search_rows(
-            &safe_table_name,
-            &select_list,
-            "",
-            "",
+            SearchScan {
+                safe_table_name: &safe_table_name,
+                select_list: &select_list,
+                where_clause: "",
+                order_by: "",
+                scan_limit,
+                rowid_alias,
+            },
             &[],
-            scan_limit,
-            rowid_alias,
         )?;
 
         let mut results = Vec::new();
@@ -176,26 +189,25 @@ impl Database {
 
     fn scan_search_rows(
         &self,
-        safe_table_name: &str,
-        select_list: &str,
-        where_clause: &str,
-        order_by: &str,
+        scan: SearchScan<'_>,
         filter_params: &[Value],
-        scan_limit: i64,
-        rowid_alias: Option<&str>,
     ) -> Result<Vec<(Option<i64>, Vec<String>)>> {
-        if let Some(rowid_alias) = rowid_alias {
+        if let Some(rowid_alias) = scan.rowid_alias {
             let sql = format!(
                 "SELECT {rowid_alias}, {select_list}
                  FROM {safe_table_name}
                  {where_clause}
                  {order_by}
-                 LIMIT ?"
+                 LIMIT ?",
+                select_list = scan.select_list,
+                safe_table_name = scan.safe_table_name,
+                where_clause = scan.where_clause,
+                order_by = scan.order_by
             );
             if let Ok(mut stmt) = self.conn.prepare(&sql) {
                 let column_count = stmt.column_count().saturating_sub(1);
                 let mut params = filter_params.to_vec();
-                params.push(Value::Integer(scan_limit));
+                params.push(Value::Integer(scan.scan_limit));
                 let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
                     let rowid = row.get::<_, i64>(0)?;
                     let mut values = Vec::with_capacity(column_count);
@@ -213,12 +225,16 @@ impl Database {
              FROM {safe_table_name}
              {where_clause}
              {order_by}
-             LIMIT ?"
+             LIMIT ?",
+            select_list = scan.select_list,
+            safe_table_name = scan.safe_table_name,
+            where_clause = scan.where_clause,
+            order_by = scan.order_by
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let column_count = stmt.column_count();
         let mut params = filter_params.to_vec();
-        params.push(Value::Integer(scan_limit));
+        params.push(Value::Integer(scan.scan_limit));
         let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
             let mut values = Vec::with_capacity(column_count);
             for idx in 0..column_count {

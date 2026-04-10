@@ -293,11 +293,11 @@ fn sql_aliases_before_cursor(query: &str) -> HashMap<String, String> {
             index += 1;
         }
 
-        if let Some(alias) = identifier_of(tokens.get(index)) {
-            if !is_clause_keyword(alias) {
-                aliases.insert(alias.to_ascii_lowercase(), table_name);
-                index += 1;
-            }
+        if let Some(alias) = identifier_of(tokens.get(index))
+            && !is_clause_keyword(alias)
+        {
+            aliases.insert(alias.to_ascii_lowercase(), table_name);
+            index += 1;
         }
     }
 
