@@ -236,13 +236,7 @@ impl Database {
         let safe_table_name = quote_table_name(table_name);
         let safe_column_name = quote_identifier(column_name);
         let rowid_alias = hidden_rowid_alias(&self.list_columns(table_name)?);
-        let order_by = if sort_clauses.is_empty() {
-            rowid_alias
-                .map(|alias| format!("ORDER BY {alias} ASC"))
-                .unwrap_or_else(|| "ORDER BY 1 ASC".to_string())
-        } else {
-            build_order_by(sort_clauses).trim_start().to_string()
-        };
+        let order_by = build_window_order_by(sort_clauses, rowid_alias);
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
         let sql = format!(
             "SELECT rn
@@ -382,8 +376,17 @@ pub(crate) fn build_order_by(sort_clauses: &[SortClause]) -> String {
 }
 
 pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause], rowid_alias: &str) -> String {
+    build_window_order_by(sort_clauses, Some(rowid_alias))
+}
+
+pub(crate) fn build_window_order_by(
+    sort_clauses: &[SortClause],
+    rowid_alias: Option<&str>,
+) -> String {
     if sort_clauses.is_empty() {
-        format!("ORDER BY {rowid_alias} ASC")
+        rowid_alias
+            .map(|rowid_alias| format!("ORDER BY {rowid_alias} ASC"))
+            .unwrap_or_default()
     } else {
         build_order_by(sort_clauses).trim_start().to_string()
     }

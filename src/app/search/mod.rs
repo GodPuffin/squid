@@ -126,6 +126,7 @@ impl App {
                     self.db_ref()?.search_table(
                         &table_name,
                         &visible_columns,
+                        &self.current_sort_clauses(),
                         &filter_clauses,
                         &query,
                         200,
@@ -214,20 +215,38 @@ impl App {
         let Some(hit) = search.results.get(search.selected_result).cloned() else {
             return Ok(());
         };
-        let Some(rowid) = hit.rowid else {
-            return Ok(());
-        };
+        let scope = search.scope;
 
         if !self.select_table_by_name(&hit.table_name)? {
             return Ok(());
         }
 
-        if let Some(offset) = self.db_ref()?.locate_row_offset(
-            &hit.table_name,
-            rowid,
-            &self.current_sort_clauses(),
-            &self.current_filter_clauses(),
-        )? {
+        let sort_clauses = self.current_sort_clauses();
+        let filter_clauses = self.current_filter_clauses();
+        let offset = if let Some(rowid) = hit.rowid {
+            self.db_ref()?.locate_row_offset(
+                &hit.table_name,
+                rowid,
+                &sort_clauses,
+                &filter_clauses,
+            )?
+        } else {
+            match scope {
+                SearchScope::CurrentTable => Some(hit.row_offset),
+                SearchScope::AllTables if sort_clauses.is_empty() && filter_clauses.is_empty() => {
+                    Some(hit.row_offset)
+                }
+                SearchScope::AllTables => {
+                    self.status_message = Some(
+                        "Result found, but rowid is unavailable for this filtered/sorted table view"
+                            .to_string(),
+                    );
+                    None
+                }
+            }
+        };
+
+        if let Some(offset) = offset {
             self.search = None;
             self.jump_to_row_offset(offset)?;
         }

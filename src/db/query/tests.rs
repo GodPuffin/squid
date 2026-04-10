@@ -5,7 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 use rusqlite::types::Value;
 
-use super::{Database, FilterClause, FilterMode, SortClause, build_filter_where, build_order_by};
+use super::{
+    Database, FilterClause, FilterMode, SortClause, build_filter_where, build_order_by,
+    build_window_order_by,
+};
 
 #[test]
 fn build_filter_where_uses_all_clauses() {
@@ -44,6 +47,15 @@ fn build_order_by_keeps_sort_priority() {
     assert_eq!(
         build_order_by(&clauses),
         " ORDER BY \"last_name\" ASC, \"created_at\" DESC"
+    );
+}
+
+#[test]
+fn build_window_order_by_skips_fallback_sort_without_hidden_rowid() {
+    assert_eq!(build_window_order_by(&[], None), "");
+    assert_eq!(
+        build_window_order_by(&[], Some("_rowid_")),
+        "ORDER BY _rowid_ ASC"
     );
 }
 

@@ -67,6 +67,7 @@ pub struct FilterClause {
 pub struct SearchHit {
     pub table_name: String,
     pub rowid: Option<i64>,
+    pub row_offset: usize,
     pub row_label: String,
     pub values: Vec<String>,
     pub matched_columns: Vec<bool>,

@@ -44,7 +44,7 @@ fn search_table_keeps_hits_when_rowid_aliases_are_shadowed() {
 
     let db = Database::open(&path).expect("open db");
     let results = db
-        .search_table("demo", &["name".to_string()], &[], "alp", 10)
+        .search_table("demo", &["name".to_string()], &[], &[], "alp", 10)
         .expect("search table");
 
     assert_eq!(results.len(), 1);

@@ -1,15 +1,18 @@
 use anyhow::Result;
 use rusqlite::{params_from_iter, types::Value};
 
-use super::query::{build_filter_where, hidden_rowid_alias, quote_identifier, quote_table_name};
+use super::query::{
+    build_filter_where, build_order_by, hidden_rowid_alias, quote_identifier, quote_table_name,
+};
 use super::value::format_value;
-use super::{Database, FilterClause, SearchHit, TableSummary};
+use super::{Database, FilterClause, SearchHit, SortClause, TableSummary};
 
 impl Database {
     pub fn search_table(
         &self,
         table_name: &str,
         visible_columns: &[String],
+        sort_clauses: &[SortClause],
         filter_clauses: &[FilterClause],
         query: &str,
         limit: usize,
@@ -37,11 +40,13 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
         let (where_clause, filter_params) = build_filter_where(filter_clauses);
+        let order_by = build_order_by(sort_clauses);
         let scan_limit = i64::try_from(limit.saturating_mul(10)).unwrap_or(i64::MAX);
         let row_iter = self.scan_search_rows(
             &safe_table_name,
             &select_list,
             &where_clause,
+            &order_by,
             &filter_params,
             scan_limit,
             rowid_alias,
@@ -62,6 +67,7 @@ impl Database {
                 results.push(SearchHit {
                     table_name: table_name.to_string(),
                     rowid,
+                    row_offset: index,
                     row_label,
                     values,
                     matched_columns,
@@ -133,6 +139,7 @@ impl Database {
             &safe_table_name,
             &select_list,
             "",
+            "",
             &[],
             scan_limit,
             rowid_alias,
@@ -149,8 +156,9 @@ impl Database {
                 results.push(SearchHit {
                     table_name: table_name.to_string(),
                     rowid,
+                    row_offset: index,
                     row_label,
-                    values: Vec::new(),
+                    values,
                     matched_columns: Vec::new(),
                     haystack: summary,
                     score,
@@ -173,6 +181,7 @@ impl Database {
         safe_table_name: &str,
         select_list: &str,
         where_clause: &str,
+        order_by: &str,
         filter_params: &[Value],
         scan_limit: i64,
         rowid_alias: Option<&str>,
@@ -182,6 +191,7 @@ impl Database {
                 "SELECT {rowid_alias}, {select_list}
                  FROM {safe_table_name}
                  {where_clause}
+                 {order_by}
                  LIMIT ?"
             );
             if let Ok(mut stmt) = self.conn.prepare(&sql) {
@@ -204,6 +214,7 @@ impl Database {
             "SELECT {select_list}
              FROM {safe_table_name}
              {where_clause}
+             {order_by}
              LIMIT ?"
         );
         let mut stmt = self.conn.prepare(&sql)?;
