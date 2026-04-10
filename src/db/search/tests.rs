@@ -210,9 +210,9 @@ fn search_table_scores_against_full_values_not_truncated_preview() {
 }
 
 #[test]
-fn bounded_scan_limit_never_drops_below_requested_limit() {
+fn bounded_scan_limit_preserves_overscan_for_large_requested_limits() {
     let scan_limit = bounded_scan_limit(30_000, 100, 1_000, 25_000);
-    assert_eq!(scan_limit, 30_000);
+    assert_eq!(scan_limit, 3_000_000);
 }
 
 fn temp_db_path(label: &str) -> PathBuf {
