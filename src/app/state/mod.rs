@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::db::{FilterMode, SearchHit};
 
@@ -72,7 +72,9 @@ pub struct SqlState {
     pub result_height: usize,
     pub completion: Option<SqlCompletionState>,
     pub status: String,
-    pub column_cache: HashMap<String, Vec<String>>,
+    pub column_cache: HashMap<String, Arc<[String]>>,
+    pub completion_cache_query: String,
+    pub completion_candidates_cache: HashMap<String, Vec<SqlCompletionItem>>,
 }
 
 #[derive(Clone, Debug)]

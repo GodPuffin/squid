@@ -120,7 +120,7 @@ fn open_database_clears_sql_column_cache() {
     let mut app = App::load(first.clone()).expect("load first app");
     app.sql
         .column_cache
-        .insert("main.users".to_string(), vec!["old_column".to_string()]);
+        .insert("main.users".to_string(), vec!["old_column".to_string()].into());
 
     app.open_database(&second).expect("open second db");
     assert!(app.sql.column_cache.is_empty());
