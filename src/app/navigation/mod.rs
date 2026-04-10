@@ -22,6 +22,7 @@ impl App {
 
         if index < self.tables.len() && index != self.selected_table {
             self.selected_table = index;
+            self.details = None;
             self.detail = None;
             self.reset_content_position();
             self.refresh_preview()?;
@@ -41,6 +42,7 @@ impl App {
             return Ok(false);
         };
         self.selected_table = index;
+        self.details = None;
         self.detail = None;
         self.reset_content_position();
         self.refresh_preview()?;
@@ -49,7 +51,8 @@ impl App {
 
     pub fn select_row_in_view(&mut self, row_in_view: usize) -> Result<()> {
         self.focus_content();
-        if let Some(total) = self.details.as_ref().map(|details| details.total_rows) {
+        let total = self.preview.total_rows;
+        if total > 0 {
             let absolute = (self.row_offset + row_in_view).min(total.saturating_sub(1));
             self.selected_row = absolute;
         }
@@ -98,7 +101,7 @@ impl App {
 
     pub(super) fn jump_to_row_offset(&mut self, offset: usize) -> Result<()> {
         self.selected_row = offset;
-        self.clamp_row_viewport();
+        self.row_offset = (offset / self.row_limit) * self.row_limit;
         self.content_view = ContentView::Rows;
         self.focus_content();
         self.refresh_preview()

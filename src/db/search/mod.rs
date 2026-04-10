@@ -13,6 +13,15 @@ const ALL_TABLE_SCAN_MULTIPLIER: usize = 50;
 const ALL_TABLE_SCAN_MIN_ROWS: usize = 500;
 const ALL_TABLE_SCAN_MAX_ROWS: usize = 10_000;
 
+struct SearchScan<'a> {
+    safe_table_name: &'a str,
+    select_list: &'a str,
+    where_clause: &'a str,
+    order_by: &'a str,
+    scan_limit: i64,
+    rowid_alias: Option<&'a str>,
+}
+
 impl Database {
     pub fn search_table(
         &self,
@@ -54,13 +63,15 @@ impl Database {
             CURRENT_TABLE_SCAN_MAX_ROWS,
         );
         let row_iter = self.scan_search_rows(
-            &safe_table_name,
-            &select_list,
-            &where_clause,
-            &order_by,
+            SearchScan {
+                safe_table_name: &safe_table_name,
+                select_list: &select_list,
+                where_clause: &where_clause,
+                order_by: &order_by,
+                scan_limit,
+                rowid_alias,
+            },
             &filter_params,
-            Some(scan_limit),
-            rowid_alias,
         )?;
 
         let mut results = Vec::new();
@@ -152,13 +163,15 @@ impl Database {
             ALL_TABLE_SCAN_MAX_ROWS,
         );
         let row_iter = self.scan_search_rows(
-            &safe_table_name,
-            &select_list,
-            "",
-            "",
+            SearchScan {
+                safe_table_name: &safe_table_name,
+                select_list: &select_list,
+                where_clause: "",
+                order_by: "",
+                scan_limit,
+                rowid_alias,
+            },
             &[],
-            Some(scan_limit),
-            rowid_alias,
         )?;
 
         let mut results = Vec::new();
@@ -194,33 +207,25 @@ impl Database {
 
     fn scan_search_rows(
         &self,
-        safe_table_name: &str,
-        select_list: &str,
-        where_clause: &str,
-        order_by: &str,
+        scan: SearchScan<'_>,
         filter_params: &[Value],
-        scan_limit: Option<i64>,
-        rowid_alias: Option<&str>,
     ) -> Result<Vec<(Option<i64>, Vec<String>)>> {
-        let limit_clause = scan_limit
-            .map(|_| "LIMIT ?")
-            .unwrap_or_default()
-            .to_string();
-
-        if let Some(rowid_alias) = rowid_alias {
+        if let Some(rowid_alias) = scan.rowid_alias {
             let sql = format!(
                 "SELECT {rowid_alias}, {select_list}
                  FROM {safe_table_name}
                  {where_clause}
                  {order_by}
-                 {limit_clause}"
+                 LIMIT ?",
+                select_list = scan.select_list,
+                safe_table_name = scan.safe_table_name,
+                where_clause = scan.where_clause,
+                order_by = scan.order_by
             );
             if let Ok(mut stmt) = self.conn.prepare(&sql) {
                 let column_count = stmt.column_count().saturating_sub(1);
                 let mut params = filter_params.to_vec();
-                if let Some(scan_limit) = scan_limit {
-                    params.push(Value::Integer(scan_limit));
-                }
+                params.push(Value::Integer(scan.scan_limit));
                 let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
                     let rowid = row.get::<_, i64>(0)?;
                     let mut values = Vec::with_capacity(column_count);
@@ -238,14 +243,16 @@ impl Database {
              FROM {safe_table_name}
              {where_clause}
              {order_by}
-             {limit_clause}"
+             LIMIT ?",
+            select_list = scan.select_list,
+            safe_table_name = scan.safe_table_name,
+            where_clause = scan.where_clause,
+            order_by = scan.order_by
         );
         let mut stmt = self.conn.prepare(&sql)?;
         let column_count = stmt.column_count();
         let mut params = filter_params.to_vec();
-        if let Some(scan_limit) = scan_limit {
-            params.push(Value::Integer(scan_limit));
-        }
+        params.push(Value::Integer(scan.scan_limit));
         let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
             let mut values = Vec::with_capacity(column_count);
             for idx in 0..column_count {

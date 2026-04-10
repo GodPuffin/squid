@@ -3,13 +3,11 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, params_from_iter};
 
 use super::{ColumnInfo, Database, ForeignKeyInfo, TableDetails};
-use crate::db::query::{quote_identifier, quote_table_name, split_qualified_table_name};
+use crate::db::query::{quote_identifier, split_qualified_table_name};
 
 impl Database {
     pub fn table_details(&self, table_name: &str) -> Result<TableDetails> {
-        let safe_table_name = quote_table_name(table_name);
         let columns = self.column_info(table_name)?;
-        let total_rows = count_rows(&self.conn, &safe_table_name, "", &[])?;
         let create_sql = if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
             let master_table = schema_catalog_table(schema);
             let sql = format!(
@@ -42,7 +40,7 @@ impl Database {
         Ok(TableDetails {
             create_sql,
             columns,
-            total_rows,
+            total_rows: 0,
         })
     }
 

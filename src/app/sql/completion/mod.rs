@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 
@@ -36,10 +36,20 @@ const SQL_SNIPPETS: &[(&str, &str)] = &[
 ];
 
 impl App {
+    pub(crate) fn sql_invalidate_completion_cache(&mut self) {
+        self.sql.completion_cache_query.clear();
+        self.sql.completion_candidates_cache.clear();
+    }
+
     pub(super) fn sql_refresh_completion(&mut self) -> Result<()> {
         if self.sql.focus != SqlPane::Editor {
             self.sql.completion = None;
             return Ok(());
+        }
+
+        if self.sql.completion_cache_query != self.sql.query {
+            self.sql.completion_cache_query = self.sql.query.clone();
+            self.sql.completion_candidates_cache.clear();
         }
 
         let (prefix_start, prefix) = completion_prefix(&self.sql.query, self.sql.cursor);
@@ -78,7 +88,15 @@ impl App {
         &mut self,
         prefix: &str,
     ) -> Result<Vec<SqlCompletionItem>> {
+        if self.sql.completion_cache_query != self.sql.query {
+            self.sql.completion_cache_query = self.sql.query.clone();
+            self.sql.completion_candidates_cache.clear();
+        }
+
         let prefix_lower = prefix.to_lowercase();
+        if let Some(cached) = self.sql.completion_candidates_cache.get(&prefix_lower) {
+            return Ok(cached.clone());
+        }
         let qualifier = completion_qualifier(prefix);
         let aliases = sql_aliases_before_cursor(&self.sql.query);
         let tables = completion_tables_for_qualifier(&self.tables, qualifier, &aliases)
@@ -113,6 +131,9 @@ impl App {
 
         let mut matches = filter_completion_items(items, &prefix_lower);
         if qualifier.is_empty() && matches.len() >= 6 {
+            self.sql
+                .completion_candidates_cache
+                .insert(prefix_lower, matches.clone());
             return Ok(matches);
         }
 
@@ -121,9 +142,9 @@ impl App {
             let table_label = completion_table_label(self, &table_name, qualifier);
             let insert_prefix =
                 completion_insert_prefix(qualifier, &table_name, use_full_table_prefix);
-            for column in self.sql_list_columns_cached(&table_name)? {
+            for column in self.sql_list_columns_cached(&table_name)?.iter() {
                 column_items.push(SqlCompletionItem {
-                    label: format!("{table_label}.{}", column),
+                    label: format!("{table_label}.{column}"),
                     insert_text: format!("{insert_prefix}{column}"),
                 });
             }
@@ -139,18 +160,21 @@ impl App {
             left.label.eq_ignore_ascii_case(&right.label) && left.insert_text == right.insert_text
         });
         matches.truncate(6);
+        self.sql
+            .completion_candidates_cache
+            .insert(prefix_lower, matches.clone());
         Ok(matches)
     }
 
-    fn sql_list_columns_cached(&mut self, table_name: &str) -> Result<Vec<String>> {
+    fn sql_list_columns_cached(&mut self, table_name: &str) -> Result<Arc<[String]>> {
         if let Some(columns) = self.sql.column_cache.get(table_name) {
-            return Ok(columns.clone());
+            return Ok(Arc::clone(columns));
         }
 
-        let columns = self.db_ref()?.list_columns(table_name)?;
+        let columns: Arc<[String]> = self.db_ref()?.list_columns(table_name)?.into();
         self.sql
             .column_cache
-            .insert(table_name.to_string(), columns.clone());
+            .insert(table_name.to_string(), Arc::clone(&columns));
         Ok(columns)
     }
 }
@@ -293,11 +317,11 @@ fn sql_aliases_before_cursor(query: &str) -> HashMap<String, String> {
             index += 1;
         }
 
-        if let Some(alias) = identifier_of(tokens.get(index)) {
-            if !is_clause_keyword(alias) {
-                aliases.insert(alias.to_ascii_lowercase(), table_name);
-                index += 1;
-            }
+        if let Some(alias) = identifier_of(tokens.get(index))
+            && !is_clause_keyword(alias)
+        {
+            aliases.insert(alias.to_ascii_lowercase(), table_name);
+            index += 1;
         }
     }
 

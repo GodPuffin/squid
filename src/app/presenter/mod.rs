@@ -60,7 +60,7 @@ impl App {
         if self.is_home() {
             "up/down move  enter open  del remove  r reload  q quit".to_string()
         } else if self.mode == AppMode::Sql {
-            return "1 browse  2 sql  Tab cycle panes  F5 or click Run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q or click Quit outside editor".to_string();
+            "1 browse  2 sql  Tab cycle panes  F5 or click Run  Enter newline/apply completion  Home/End move  PgUp/PgDn scroll  q or click Quit outside editor".to_string()
         } else if self.detail.is_some() {
             if self.detail_is_editing() {
                 "Esc stop editing  Type value  Enter newline  Backspace delete".to_string()

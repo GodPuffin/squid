@@ -577,12 +577,10 @@ pub(crate) fn detail_value_text(detail: &DetailState, field: &DetailField) -> St
         } else {
             lines.extend(field.draft_value.lines().map(str::to_string));
         }
+    } else if field.draft_value.is_empty() {
+        lines.push("<empty>".to_string());
     } else {
-        if field.draft_value.is_empty() {
-            lines.push("<empty>".to_string());
-        } else {
-            lines.extend(field.draft_value.lines().map(str::to_string));
-        }
+        lines.extend(field.draft_value.lines().map(str::to_string));
     }
 
     lines.join("\n")

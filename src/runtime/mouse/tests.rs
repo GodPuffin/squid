@@ -98,6 +98,8 @@ fn sql_completion_click_applies_selected_item() {
         }),
         status: String::new(),
         column_cache: std::collections::HashMap::new(),
+        completion_cache_query: String::new(),
+        completion_candidates_cache: std::collections::HashMap::new(),
     };
 
     let layout = layout_info(Rect::new(0, 0, 80, 24), &app);

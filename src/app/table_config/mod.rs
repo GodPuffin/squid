@@ -71,7 +71,8 @@ impl App {
             .columns
             .iter()
             .zip(self.visible_column_flags())
-            .filter_map(|(column, visible)| visible.then(|| column.name.clone()))
+            .filter(|(_, visible)| *visible)
+            .map(|(column, _)| column.name.clone())
             .collect()
     }
 
