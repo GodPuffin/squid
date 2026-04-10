@@ -5,6 +5,14 @@ use super::query::{build_filter_where, build_order_by, quote_identifier, quote_t
 use super::value::format_value;
 use super::{Database, FilterClause, SearchHit, SortClause, TableSummary};
 
+const CURRENT_TABLE_SCAN_MULTIPLIER: usize = 100;
+const CURRENT_TABLE_SCAN_MIN_ROWS: usize = 1_000;
+const CURRENT_TABLE_SCAN_MAX_ROWS: usize = 25_000;
+
+const ALL_TABLE_SCAN_MULTIPLIER: usize = 50;
+const ALL_TABLE_SCAN_MIN_ROWS: usize = 500;
+const ALL_TABLE_SCAN_MAX_ROWS: usize = 10_000;
+
 impl Database {
     pub fn search_table(
         &self,
@@ -39,13 +47,19 @@ impl Database {
             .join(", ");
         let (where_clause, filter_params) = build_filter_where(filter_clauses);
         let order_by = build_order_by(sort_clauses);
+        let scan_limit = bounded_scan_limit(
+            limit,
+            CURRENT_TABLE_SCAN_MULTIPLIER,
+            CURRENT_TABLE_SCAN_MIN_ROWS,
+            CURRENT_TABLE_SCAN_MAX_ROWS,
+        );
         let row_iter = self.scan_search_rows(
             &safe_table_name,
             &select_list,
             &where_clause,
             &order_by,
             &filter_params,
-            None,
+            Some(scan_limit),
             rowid_alias,
         )?;
 
@@ -131,13 +145,19 @@ impl Database {
             .collect::<Vec<_>>()
             .join(", ");
         let query_lower = query.to_lowercase();
+        let scan_limit = bounded_scan_limit(
+            limit,
+            ALL_TABLE_SCAN_MULTIPLIER,
+            ALL_TABLE_SCAN_MIN_ROWS,
+            ALL_TABLE_SCAN_MAX_ROWS,
+        );
         let row_iter = self.scan_search_rows(
             &safe_table_name,
             &select_list,
             "",
             "",
             &[],
-            None,
+            Some(scan_limit),
             rowid_alias,
         )?;
 
@@ -244,6 +264,12 @@ fn render_search_summary(columns: &[String], values: &[String]) -> String {
         .map(|(column, value)| format!("{column}: {value}"))
         .collect::<Vec<_>>()
         .join(" | ")
+}
+
+fn bounded_scan_limit(limit: usize, multiplier: usize, min_rows: usize, max_rows: usize) -> i64 {
+    let expanded = limit.saturating_mul(multiplier);
+    let bounded = expanded.max(min_rows).min(max_rows);
+    i64::try_from(bounded).unwrap_or(i64::MAX)
 }
 
 pub(crate) fn fuzzy_score(haystack: &str, query: &str) -> Option<i64> {
