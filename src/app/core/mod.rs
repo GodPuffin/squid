@@ -444,6 +444,7 @@ impl App {
             self.details = Some(db.table_details(&table_name)?);
             self.ensure_table_config();
 
+            let queried_offset = self.row_offset;
             self.preview = self.db_ref()?.preview_table(
                 &table_name,
                 &self.visible_column_names(),
@@ -456,6 +457,16 @@ impl App {
                 details.total_rows = self.preview.total_rows;
             }
             self.clamp_row_viewport();
+            if self.row_offset != queried_offset {
+                self.preview = self.db_ref()?.preview_table(
+                    &table_name,
+                    &self.visible_column_names(),
+                    &self.current_sort_clauses(),
+                    &self.current_filter_clauses(),
+                    self.row_limit,
+                    self.row_offset,
+                )?;
+            }
             self.clamp_schema_offset();
         } else {
             self.details = None;

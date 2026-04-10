@@ -141,9 +141,6 @@ impl Database {
                 })?
             }
         };
-        if !conn.is_readonly(MAIN_DB)? {
-            conn.pragma_update(None, "journal_mode", "MEMORY")?;
-        }
         Ok(Self { conn })
     }
 
