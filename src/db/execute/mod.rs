@@ -1,12 +1,28 @@
 use anyhow::{Result, anyhow, bail};
 use rusqlite::params_from_iter;
 use rusqlite::types::Value;
+use rusqlite::{Error as SqlError, ErrorCode, MAIN_DB};
 
 use super::query::{quote_identifier, quote_table_name};
 use super::value::format_value;
 use super::{Database, SqlExecutionResult};
 
 impl Database {
+    fn run_update_row_values(&self, sql: &str, params: &[Value]) -> Result<i64> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let Some(row) = rows.next()? else {
+            bail!("refusing to update: expected exactly one updated row, updated 0");
+        };
+        let updated_rowid = row.get::<_, i64>(0)?;
+
+        if rows.next()?.is_some() {
+            bail!("refusing to update: expected exactly one updated row, updated multiple");
+        }
+
+        Ok(updated_rowid)
+    }
+
     pub fn update_row_values(
         &self,
         table_name: &str,
@@ -40,18 +56,19 @@ impl Database {
             .collect::<Vec<_>>();
         params.push(Value::Integer(rowid));
 
-        let mut stmt = self.conn.prepare(&sql)?;
-        let mut rows = stmt.query(params_from_iter(params.iter()))?;
-        let Some(row) = rows.next()? else {
-            bail!("refusing to update: expected exactly one updated row, updated 0");
-        };
-        let updated_rowid = row.get::<_, i64>(0)?;
-
-        if rows.next()?.is_some() {
-            bail!("refusing to update: expected exactly one updated row, updated multiple");
+        match self.run_update_row_values(&sql, &params) {
+            Ok(updated_rowid) => Ok(updated_rowid),
+            Err(error)
+                if error
+                    .downcast_ref::<SqlError>()
+                    .is_some_and(is_readonly_write_error)
+                    && !self.conn.is_readonly(MAIN_DB)? =>
+            {
+                self.conn.pragma_update(None, "journal_mode", "MEMORY")?;
+                self.run_update_row_values(&sql, &params)
+            }
+            Err(error) => Err(error),
         }
-
-        Ok(updated_rowid)
     }
 
     pub fn execute_sql(&self, sql: &str, row_limit: usize) -> Result<SqlExecutionResult> {
@@ -102,6 +119,15 @@ impl Database {
             })
         }
     }
+}
+
+fn is_readonly_write_error(error: &SqlError) -> bool {
+    matches!(
+        error,
+        SqlError::SqliteFailure(err, _)
+            if err.code == ErrorCode::ReadOnly
+                || err.extended_code == rusqlite::ffi::SQLITE_READONLY
+    )
 }
 
 fn describe_statement(sql: &str) -> String {
