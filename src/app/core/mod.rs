@@ -353,6 +353,7 @@ impl App {
                     .position(|table| table.name == table_name)
             })
             .unwrap_or_else(|| selected_table_index.min(self.tables.len().saturating_sub(1)));
+        self.details = None;
         self.detail = None;
         self.reset_content_position();
         self.refresh_preview()?;
@@ -375,6 +376,7 @@ impl App {
     pub(super) fn move_table_selection_up(&mut self) -> Result<()> {
         if self.selected_table > 0 {
             self.selected_table -= 1;
+            self.details = None;
             self.detail = None;
             self.reset_content_position();
             self.refresh_preview()?;
@@ -385,6 +387,7 @@ impl App {
     pub(super) fn move_table_selection_down(&mut self) -> Result<()> {
         if self.selected_table + 1 < self.tables.len() {
             self.selected_table += 1;
+            self.details = None;
             self.detail = None;
             self.reset_content_position();
             self.refresh_preview()?;
@@ -441,16 +444,6 @@ impl App {
             self.details = Some(db.table_details(&table_name)?);
             self.ensure_table_config();
 
-            if let Some(details) = &self.details {
-                if details.total_rows == 0 {
-                    self.selected_row = 0;
-                    self.row_offset = 0;
-                } else {
-                    self.selected_row = self.selected_row.min(details.total_rows.saturating_sub(1));
-                    self.clamp_row_viewport();
-                }
-            }
-
             self.preview = self.db_ref()?.preview_table(
                 &table_name,
                 &self.visible_column_names(),
@@ -459,6 +452,10 @@ impl App {
                 self.row_limit,
                 self.row_offset,
             )?;
+            if let Some(details) = &mut self.details {
+                details.total_rows = self.preview.total_rows;
+            }
+            self.clamp_row_viewport();
             self.clamp_schema_offset();
         } else {
             self.details = None;
@@ -475,11 +472,7 @@ impl App {
     }
 
     pub(super) fn clamp_row_viewport(&mut self) {
-        let total_rows = self
-            .details
-            .as_ref()
-            .map(|details| details.total_rows)
-            .unwrap_or(0);
+        let total_rows = self.preview.total_rows;
         if total_rows == 0 {
             self.selected_row = 0;
             self.row_offset = 0;
