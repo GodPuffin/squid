@@ -57,6 +57,8 @@ impl App {
                 completion: None,
                 status: "SQL mode ready".to_string(),
                 column_cache: std::collections::HashMap::new(),
+                completion_cache_query: String::new(),
+                completion_candidates_cache: std::collections::HashMap::new(),
             },
             configs: std::collections::HashMap::new(),
         };
@@ -345,6 +347,7 @@ impl App {
         let selected_table_index = self.selected_table;
         self.tables = self.db_ref()?.list_tables()?;
         self.sql.column_cache.clear();
+        self.sql_invalidate_completion_cache();
         self.selected_table = selected_table_name
             .as_deref()
             .and_then(|table_name| {
@@ -540,6 +543,7 @@ impl App {
         self.search = None;
         self.status_message = None;
         self.sql.column_cache.clear();
+        self.sql_invalidate_completion_cache();
         self.reset_content_position();
         self.refresh_preview()?;
         match RecentStore::record(&absolute_path) {

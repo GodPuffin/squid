@@ -406,6 +406,50 @@ fn sql_completion_preserves_snippets_with_keyword_labels() {
 }
 
 #[test]
+fn sql_completion_cache_invalidates_when_query_context_changes() {
+    let path = temp_db_path("completion-cache-query");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY)", [])
+        .expect("create orders");
+    conn.execute("CREATE TABLE users(name TEXT)", [])
+        .expect("create users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.sql.query = "SELECT o. FROM orders o".to_string();
+    app.sql.cursor = "SELECT o.".len();
+    app.sql_refresh_completion().expect("refresh completion");
+    let first_items = app
+        .sql
+        .completion
+        .as_ref()
+        .expect("completion")
+        .items
+        .iter()
+        .map(|item| item.insert_text.as_str())
+        .collect::<Vec<_>>();
+    assert!(first_items.contains(&"o.id"));
+
+    app.sql.query = "SELECT o. FROM users o".to_string();
+    app.sql.cursor = "SELECT o.".len();
+    app.sql_refresh_completion().expect("refresh completion");
+    let second_items = app
+        .sql
+        .completion
+        .as_ref()
+        .expect("completion")
+        .items
+        .iter()
+        .map(|item| item.insert_text.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(second_items.contains(&"o.name"));
+    assert!(!second_items.contains(&"o.id"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn sql_aliases_map_aliases_to_their_tables() {
     let aliases = sql_aliases_before_cursor(
         "SELECT u. FROM main.orders o JOIN main.users AS u ON u.id = o.id",
