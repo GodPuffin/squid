@@ -273,19 +273,9 @@ fn render_search_summary(columns: &[String], values: &[String]) -> String {
         .join(" | ")
 }
 
-fn bounded_scan_limit(limit: usize, multiplier: usize, min_rows: usize, max_rows: usize) -> i64 {
+fn bounded_scan_limit(limit: usize, multiplier: usize, min_rows: usize, _max_rows: usize) -> i64 {
     let expanded = limit.saturating_mul(multiplier);
-    let bounded = expanded.max(min_rows);
-    let cap_threshold = if multiplier == 0 {
-        max_rows
-    } else {
-        max_rows / multiplier
-    };
-    let bounded = if limit > cap_threshold {
-        bounded
-    } else {
-        bounded.min(max_rows)
-    };
+    let bounded = expanded.max(min_rows).max(limit);
     i64::try_from(bounded).unwrap_or(i64::MAX)
 }
 
