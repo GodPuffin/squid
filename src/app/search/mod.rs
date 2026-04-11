@@ -2,6 +2,8 @@ use anyhow::Result;
 
 use super::{Action, App, SearchScope, SearchState};
 
+const CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS: usize = 2_000;
+
 impl App {
     pub fn close_search(&mut self) {
         self.search = None;
@@ -77,6 +79,8 @@ impl App {
 
     pub(super) fn open_search(&mut self, scope: SearchScope) -> Result<()> {
         self.focus_content();
+        let submitted =
+            matches!(scope, SearchScope::CurrentTable) && self.current_table_search_is_live();
         self.search = Some(SearchState {
             scope,
             query: String::new(),
@@ -84,23 +88,23 @@ impl App {
             selected_result: 0,
             result_offset: 0,
             result_limit: self.row_limit.saturating_sub(3).max(1),
-            submitted: matches!(scope, SearchScope::CurrentTable),
+            submitted,
+            loading: false,
         });
-        if matches!(scope, SearchScope::CurrentTable) {
+        if submitted {
             self.refresh_search()?;
         }
         Ok(())
     }
 
     fn refresh_search_if_live(&mut self) -> Result<()> {
-        if self
-            .search
-            .as_ref()
-            .is_some_and(|search| matches!(search.scope, SearchScope::CurrentTable))
-        {
+        if self.search.as_ref().is_some_and(|search| {
+            matches!(search.scope, SearchScope::CurrentTable) && self.current_table_search_is_live()
+        }) {
             self.refresh_search()?;
         } else if let Some(search) = &mut self.search {
             search.submitted = false;
+            search.loading = false;
             search.results.clear();
             search.selected_result = 0;
             search.result_offset = 0;
@@ -141,6 +145,7 @@ impl App {
         if let Some(search) = &mut self.search {
             search.results = results;
             search.submitted = true;
+            search.loading = false;
             if search.results.is_empty() {
                 search.selected_result = 0;
                 search.result_offset = 0;
@@ -161,12 +166,18 @@ impl App {
         };
 
         match search.scope {
-            SearchScope::CurrentTable => self.jump_to_search_result()?,
+            SearchScope::CurrentTable => {
+                if search.submitted {
+                    self.jump_to_search_result()?;
+                } else {
+                    self.schedule_search_refresh();
+                }
+            }
             SearchScope::AllTables => {
                 if search.submitted {
                     self.jump_to_search_result()?;
                 } else {
-                    self.refresh_search()?;
+                    self.schedule_search_refresh();
                 }
             }
         }
@@ -252,6 +263,29 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn current_table_search_is_live(&self) -> bool {
+        self.preview.total_rows <= CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS
+    }
+
+    pub(crate) fn run_pending_work(&mut self) -> Result<bool> {
+        if self.search.as_ref().is_some_and(|search| search.loading) {
+            self.refresh_search()?;
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    fn schedule_search_refresh(&mut self) {
+        if let Some(search) = &mut self.search {
+            search.loading = true;
+            search.submitted = false;
+            search.results.clear();
+            search.selected_result = 0;
+            search.result_offset = 0;
+        }
     }
 }
 

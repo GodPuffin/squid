@@ -86,6 +86,7 @@ pub struct SearchState {
     pub result_offset: usize,
     pub result_limit: usize,
     pub submitted: bool,
+    pub loading: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

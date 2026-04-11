@@ -36,6 +36,7 @@ fn search_accepts_numeric_input() {
         result_offset: 0,
         result_limit: 10,
         submitted: false,
+        loading: false,
     });
 
     assert_eq!(

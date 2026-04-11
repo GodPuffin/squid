@@ -30,8 +30,50 @@ fn all_tables_search_starts_unsubmitted_and_confirm_runs_it() {
     assert!(app.search.as_ref().unwrap().results.is_empty());
 
     app.handle_search(Action::Confirm).unwrap();
+    assert!(app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    assert!(app.run_pending_work().unwrap());
     assert!(app.search.as_ref().unwrap().submitted);
+    assert!(!app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().results.is_empty());
+}
+
+#[test]
+fn large_current_table_search_starts_unsubmitted_and_confirm_runs_it() {
+    let path = temp_db_path("search-current-large");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(name TEXT)", [])
+        .expect("create table");
+    for idx in 0..2_100 {
+        let value = if idx == 2_050 {
+            "target match"
+        } else {
+            "filler value"
+        };
+        conn.execute("INSERT INTO demo(name) VALUES (?1)", [value])
+            .expect("insert row");
+    }
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    app.handle_search(Action::InputChar('t')).unwrap();
+    assert!(!app.search.as_ref().unwrap().submitted);
+    assert!(app.search.as_ref().unwrap().results.is_empty());
+
+    app.handle_search(Action::Confirm).unwrap();
+    assert!(app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    assert!(app.run_pending_work().unwrap());
+    assert!(app.search.as_ref().unwrap().submitted);
+    assert!(!app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().results.is_empty());
+
+    let _ = fs::remove_file(path);
 }
 
 #[test]
@@ -41,6 +83,7 @@ fn editing_all_tables_query_clears_stale_results() {
     app.open_search(SearchScope::AllTables).unwrap();
     app.search.as_mut().unwrap().query = "alice".to_string();
     app.handle_search(Action::Confirm).unwrap();
+    assert!(app.run_pending_work().unwrap());
     assert!(app.search.as_ref().unwrap().submitted);
 
     app.handle_search(Action::InputChar('x')).unwrap();
@@ -107,12 +150,44 @@ fn current_table_search_can_jump_without_rowid_alias() {
     let mut app = App::load(path.clone()).expect("load app");
     app.focus_content();
     app.open_search(SearchScope::CurrentTable).unwrap();
-    app.handle_search(Action::InputChar('a')).unwrap();
-    app.handle_search(Action::InputChar('l')).unwrap();
+    app.handle_search(Action::InputChar('b')).unwrap();
+    app.handle_search(Action::InputChar('r')).unwrap();
+    app.handle_search(Action::InputChar('v')).unwrap();
     app.handle_search(Action::Confirm).unwrap();
 
     assert!(app.search.is_none());
-    assert_eq!(app.selected_row, 0);
+    assert_eq!(app.selected_row, 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn all_tables_search_can_jump_without_rowid_alias() {
+    let path = temp_db_path("search-shadowed-all-jump");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE demo(rowid INTEGER, _rowid_ INTEGER, oid INTEGER, name TEXT);
+         INSERT INTO demo(rowid, _rowid_, oid, name) VALUES
+             (10, 20, 30, 'alpha'),
+             (11, 21, 31, 'bravo');",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.handle_search(Action::InputChar('b')).unwrap();
+    app.handle_search(Action::InputChar('r')).unwrap();
+    app.handle_search(Action::InputChar('a')).unwrap();
+    app.handle_search(Action::InputChar('v')).unwrap();
+    app.handle_search(Action::InputChar('o')).unwrap();
+    app.handle_search(Action::Confirm).unwrap();
+    assert!(app.run_pending_work().unwrap());
+    app.handle_search(Action::Confirm).unwrap();
+
+    assert!(app.search.is_none());
+    assert_eq!(app.selected_row, 1);
 
     let _ = fs::remove_file(path);
 }

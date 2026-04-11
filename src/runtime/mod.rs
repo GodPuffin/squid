@@ -42,6 +42,10 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
         }
         terminal.draw(|frame| crate::ui::render(frame, &app))?;
 
+        if app.run_pending_work()? {
+            continue;
+        }
+
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }

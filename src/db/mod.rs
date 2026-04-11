@@ -11,6 +11,7 @@ use rusqlite::{Connection, MAIN_DB, OpenFlags};
 
 use crate::db::query::split_qualified_table_name;
 use crate::db::schema::schema_catalog_table;
+pub(crate) use search::fuzzy_match_positions;
 
 #[derive(Debug, Clone)]
 pub struct TableSummary {

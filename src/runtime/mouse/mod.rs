@@ -262,7 +262,15 @@ pub fn handle_mouse_event(
     if let (Some(search_box), Some(search_results)) = (&layout.search_box, &layout.search_results) {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(index) = ui::search_result_row_at(*search_results, column, row) {
+                let search_index = app.search.as_ref().and_then(|search| match search.scope {
+                    crate::app::SearchScope::CurrentTable => {
+                        ui::table_row_at(*search_results, column, row)
+                    }
+                    crate::app::SearchScope::AllTables => {
+                        ui::list_row_at(*search_results, column, row)
+                    }
+                });
+                if let Some(index) = search_index {
                     app.select_search_result_in_view(index);
                     handle_search_double_click(app, state, now)?;
                     return Ok(false);
