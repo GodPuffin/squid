@@ -66,7 +66,7 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
                     Span::raw("  "),
                 ];
                 spans.extend(highlight_exact_spans(&hit.haystack, &search.query));
-                ListItem::new(Line::from(spans))
+                ListItem::new(Line::from(crop_spans(spans, search.horizontal_offset)))
             })
             .collect()
     };
@@ -207,7 +207,10 @@ fn highlight_char_positions<'a>(haystack: &'a str, positions: &[usize]) -> Vec<S
                 spans.push(Span::raw(&haystack[normal_start..byte_start]));
             }
             let byte_end = byte_start + ch.len_utf8();
-            spans.push(Span::styled(&haystack[byte_start..byte_end], search_highlight_style()));
+            spans.push(Span::styled(
+                &haystack[byte_start..byte_end],
+                search_highlight_style(),
+            ));
             normal_start = byte_end;
         }
     }
@@ -235,6 +238,31 @@ fn exact_match_range(haystack: &str, query: &str) -> Option<(usize, usize)> {
 
     None
 }
+
+fn crop_spans(spans: Vec<Span<'_>>, char_offset: usize) -> Vec<Span<'static>> {
+    let mut remaining = char_offset;
+    let mut cropped = Vec::new();
+
+    for span in spans {
+        let content = span.content.into_owned();
+        let content_len = content.chars().count();
+        if remaining >= content_len {
+            remaining -= content_len;
+            continue;
+        }
+
+        let start = byte_offset_for_char_index(&content, remaining);
+        cropped.push(Span::styled(content[start..].to_string(), span.style));
+        remaining = 0;
+    }
+
+    if cropped.is_empty() {
+        vec![Span::raw("")]
+    } else {
+        cropped
+    }
+}
+
 fn byte_offset_for_char_index(value: &str, char_index: usize) -> usize {
     value
         .char_indices()

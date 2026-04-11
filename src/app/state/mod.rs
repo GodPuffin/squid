@@ -84,6 +84,7 @@ pub struct SearchState {
     pub results: Vec<SearchHit>,
     pub selected_result: usize,
     pub result_offset: usize,
+    pub horizontal_offset: usize,
     pub result_limit: usize,
     pub submitted: bool,
     pub loading: bool,

@@ -88,7 +88,7 @@ impl App {
                     "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close  Backspace delete"
                 ),
                 SearchScope::AllTables => format!(
-                    "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close"
+                    "Search {scope}  Type query then Enter to run  Up/Down select  Left/Right scroll  Enter jump  Esc close"
                 ),
             }
         } else {

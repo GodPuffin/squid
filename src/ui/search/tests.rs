@@ -76,3 +76,20 @@ fn search_loading_message_matches_scope() {
         "Searching all tables exhaustively..."
     );
 }
+
+#[test]
+fn crop_spans_skips_prefix_characters_across_spans() {
+    let spans = super::crop_spans(
+        vec![
+            ratatui::text::Span::raw("ab"),
+            ratatui::text::Span::styled("cd", super::search_highlight_style()),
+            ratatui::text::Span::raw("ef"),
+        ],
+        3,
+    );
+
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].content.as_ref(), "d");
+    assert_eq!(spans[1].content.as_ref(), "ef");
+    assert_eq!(spans[0].style, super::search_highlight_style());
+}

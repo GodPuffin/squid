@@ -85,12 +85,14 @@ fn editing_all_tables_query_clears_stale_results() {
     app.handle_search(Action::Confirm).unwrap();
     assert!(app.run_pending_work().unwrap());
     assert!(app.search.as_ref().unwrap().submitted);
+    app.search.as_mut().unwrap().horizontal_offset = 16;
 
     app.handle_search(Action::InputChar('x')).unwrap();
     let search = app.search.as_ref().unwrap();
     assert!(!search.submitted);
     assert!(search.results.is_empty());
     assert_eq!(search.selected_result, 0);
+    assert_eq!(search.horizontal_offset, 0);
 }
 
 #[test]
@@ -210,6 +212,37 @@ fn current_table_search_move_clamps_at_bounds() {
         search.selected_result,
         search.results.len().saturating_sub(1)
     );
+}
+
+#[test]
+fn all_tables_search_left_right_scrolls_and_clamps() {
+    let mut app = app_with_search_data("search-horizontal");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "a very long search result that should scroll horizontally".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    for _ in 0..100 {
+        app.handle_search(Action::MoveRight).unwrap();
+    }
+    let max_offset = app.search.as_ref().unwrap().horizontal_offset;
+    assert!(max_offset > 0);
+
+    app.handle_search(Action::MoveRight).unwrap();
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, max_offset);
+
+    for _ in 0..100 {
+        app.handle_search(Action::MoveLeft).unwrap();
+    }
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 
 fn app_with_search_data(label: &str) -> App {

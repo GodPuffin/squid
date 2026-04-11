@@ -292,6 +292,16 @@ pub fn handle_mouse_event(
                 clear_click_state(state);
                 return Ok(false);
             }
+            MouseEventKind::ScrollLeft if contains(*search_results, column, row) => {
+                app.handle(Action::MoveLeft)?;
+                clear_click_state(state);
+                return Ok(false);
+            }
+            MouseEventKind::ScrollRight if contains(*search_results, column, row) => {
+                app.handle(Action::MoveRight)?;
+                clear_click_state(state);
+                return Ok(false);
+            }
             _ => {}
         }
     }

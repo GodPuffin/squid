@@ -264,7 +264,7 @@ fn trim_exact_table_hits(results: &mut Vec<SearchHit>, limit: usize) {
     trim_search_hits(results, limit, sort_exact_table_hits);
 }
 
-fn trim_search_hits(results: &mut Vec<SearchHit>, limit: usize, sorter: fn(&mut Vec<SearchHit>)) {
+fn trim_search_hits(results: &mut Vec<SearchHit>, limit: usize, sorter: fn(&mut [SearchHit])) {
     let retain_limit = limit.saturating_add(SEARCH_RESULT_BUFFER);
     if results.len() > retain_limit {
         sorter(results);
@@ -272,7 +272,7 @@ fn trim_search_hits(results: &mut Vec<SearchHit>, limit: usize, sorter: fn(&mut 
     }
 }
 
-fn sort_current_table_hits(results: &mut Vec<SearchHit>) {
+fn sort_current_table_hits(results: &mut [SearchHit]) {
     results.sort_by(|left, right| {
         right
             .score
@@ -281,7 +281,7 @@ fn sort_current_table_hits(results: &mut Vec<SearchHit>) {
     });
 }
 
-fn sort_exact_table_hits(results: &mut Vec<SearchHit>) {
+fn sort_exact_table_hits(results: &mut [SearchHit]) {
     results.sort_by(|left, right| {
         right
             .score
@@ -290,7 +290,7 @@ fn sort_exact_table_hits(results: &mut Vec<SearchHit>) {
     });
 }
 
-fn sort_all_table_hits(results: &mut Vec<SearchHit>) {
+fn sort_all_table_hits(results: &mut [SearchHit]) {
     results.sort_by(|left, right| {
         right
             .score
@@ -341,11 +341,9 @@ pub(crate) fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
         }
 
         let score = score_fuzzy_match(&positions).unwrap_or(i64::MIN);
-        let replace = best
-            .as_ref()
-            .is_none_or(|(best_score, best_positions)| {
-                score > *best_score || (score == *best_score && positions < *best_positions)
-            });
+        let replace = best.as_ref().is_none_or(|(best_score, best_positions)| {
+            score > *best_score || (score == *best_score && positions < *best_positions)
+        });
         if replace {
             best = Some((score, positions));
         }
