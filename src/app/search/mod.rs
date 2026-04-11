@@ -5,6 +5,8 @@ use crate::db::SearchHit;
 
 const CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS: usize = 2_000;
 const HORIZONTAL_SEARCH_SCROLL_STEP: usize = 8;
+const SEARCH_RESULTS_BLOCK_BORDER_WIDTH: usize = 2;
+const SEARCH_RESULTS_HIGHLIGHT_SYMBOL_WIDTH: usize = 3;
 
 impl App {
     pub fn close_search(&mut self) {
@@ -27,6 +29,13 @@ impl App {
         } else if delta > 0 {
             let _ = self.handle_search(Action::MoveDown);
         }
+    }
+
+    pub(crate) fn sync_search_results_view_width(&mut self, area_width: usize) {
+        self.search_results_view_width = area_width
+            .saturating_sub(SEARCH_RESULTS_BLOCK_BORDER_WIDTH)
+            .saturating_sub(SEARCH_RESULTS_HIGHLIGHT_SYMBOL_WIDTH);
+        self.clamp_search_viewport();
     }
 
     pub(super) fn handle_search(&mut self, action: Action) -> Result<()> {
@@ -145,9 +154,6 @@ impl App {
             }
             SearchScope::AllTables => self.db_ref()?.search_tables(&self.tables, &query, 300)?,
         };
-        let max_horizontal_offset =
-            self.max_all_table_search_horizontal_offset_for_results(scope, &results);
-
         if let Some(search) = &mut self.search {
             search.results = results;
             search.submitted = true;
@@ -160,7 +166,6 @@ impl App {
                 search.selected_result = search
                     .selected_result
                     .min(search.results.len().saturating_sub(1));
-                search.horizontal_offset = search.horizontal_offset.min(max_horizontal_offset);
                 self.clamp_search_viewport();
             }
         }
@@ -232,10 +237,21 @@ impl App {
     }
 
     pub(super) fn clamp_search_viewport(&mut self) {
+        let max_horizontal_offset = self
+            .search
+            .as_ref()
+            .map(|search| {
+                self.max_all_table_search_horizontal_offset_for_results(
+                    search.scope,
+                    &search.results,
+                )
+            })
+            .unwrap_or(0);
         let Some(search) = &mut self.search else {
             return;
         };
 
+        search.horizontal_offset = search.horizontal_offset.min(max_horizontal_offset);
         let max_offset = search.results.len().saturating_sub(search.result_limit);
         search.result_offset = search.result_offset.min(max_offset);
 
@@ -260,25 +276,29 @@ impl App {
         scope: SearchScope,
         results: &[SearchHit],
     ) -> usize {
-        if !matches!(scope, SearchScope::AllTables) {
+        if !matches!(scope, SearchScope::AllTables) || self.search_results_view_width == 0 {
             return 0;
         }
 
         results
             .iter()
             .map(|hit| {
-                format!(
-                    "{}  {}  {}",
-                    self.display_table_name(&hit.table_name),
-                    hit.row_label,
-                    hit.haystack
-                )
-                .chars()
-                .count()
-                .saturating_sub(1)
+                self.all_table_search_result_width(hit)
+                    .saturating_sub(self.search_results_view_width)
             })
             .max()
             .unwrap_or(0)
+    }
+
+    fn all_table_search_result_width(&self, hit: &SearchHit) -> usize {
+        format!(
+            "{}  {}  {}",
+            self.display_table_name(&hit.table_name),
+            hit.row_label,
+            hit.haystack
+        )
+        .chars()
+        .count()
     }
 
     fn jump_to_search_result(&mut self) -> Result<()> {

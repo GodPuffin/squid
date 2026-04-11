@@ -32,6 +32,12 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
             viewport.detail_value_height,
         )?;
         let layout = crate::ui::layout_info(Rect::new(0, 0, size.width, size.height), &app);
+        app.sync_search_results_view_width(
+            layout
+                .search_results
+                .map(|area| area.width as usize)
+                .unwrap_or(0),
+        );
         if let Some(sql) = &layout.sql {
             app.set_sql_viewport_sizes(
                 sql.editor.height.saturating_sub(2) as usize,

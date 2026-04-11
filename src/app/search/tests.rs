@@ -218,6 +218,7 @@ fn current_table_search_move_clamps_at_bounds() {
 fn all_tables_search_left_right_scrolls_and_clamps() {
     let mut app = app_with_search_data("search-horizontal");
     app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(24);
     app.search.as_mut().unwrap().results = vec![SearchHit {
         table_name: "main.customers".to_string(),
         rowid: Some(1),
@@ -242,6 +243,54 @@ fn all_tables_search_left_right_scrolls_and_clamps() {
     for _ in 0..100 {
         app.handle_search(Action::MoveLeft).unwrap();
     }
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
+}
+
+#[test]
+fn all_tables_search_does_not_scroll_when_result_fits_visible_width() {
+    let mut app = app_with_search_data("search-horizontal-fit");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(120);
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "short result".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    app.handle_search(Action::MoveRight).unwrap();
+
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
+}
+
+#[test]
+fn all_tables_search_clamps_horizontal_offset_after_resize() {
+    let mut app = app_with_search_data("search-horizontal-resize");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(24);
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "a very long search result that should clamp after resize".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    app.handle_search(Action::MoveRight).unwrap();
+    app.handle_search(Action::MoveRight).unwrap();
+    assert!(app.search.as_ref().unwrap().horizontal_offset > 0);
+
+    app.sync_search_results_view_width(120);
+
     assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 

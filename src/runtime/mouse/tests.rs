@@ -348,7 +348,9 @@ fn all_table_search_horizontal_mouse_scroll_moves_offset() {
             row_label: "rowid 1".to_string(),
             values: vec!["alice".to_string()],
             matched_columns: Vec::new(),
-            haystack: "a very long search result that needs scrolling".to_string(),
+            haystack:
+                "a very long search result that needs scrolling even inside a narrow results pane"
+                    .to_string(),
             score: 10,
         }],
         selected_result: 0,
@@ -359,7 +361,7 @@ fn all_table_search_horizontal_mouse_scroll_moves_offset() {
         loading: false,
     });
 
-    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let layout = layout_info(Rect::new(0, 0, 50, 24), &app);
     let results = layout.search_results.unwrap();
     let mut state = MouseState::default();
 

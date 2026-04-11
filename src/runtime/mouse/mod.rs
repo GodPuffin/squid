@@ -21,6 +21,13 @@ pub fn handle_mouse_event(
     state: &mut MouseState,
     now: Instant,
 ) -> Result<bool> {
+    app.sync_search_results_view_width(
+        layout
+            .search_results
+            .map(|area| area.width as usize)
+            .unwrap_or(0),
+    );
+
     let column = mouse.column;
     let row = mouse.row;
 
