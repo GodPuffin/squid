@@ -273,6 +273,71 @@ fn search_tables_keeps_global_top_hits_from_single_table() {
 }
 
 #[test]
+fn search_tables_keeps_only_requested_number_of_best_hits() {
+    let path = temp_db_path("search-all-tables-limit-best-hits");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE best(name TEXT)", [])
+        .expect("create best table");
+    conn.execute("CREATE TABLE fallback(name TEXT)", [])
+        .expect("create fallback table");
+    for value in ["needle", "prefix needle", "needle suffix"] {
+        conn.execute("INSERT INTO best(name) VALUES (?1)", [value])
+            .expect("insert best row");
+    }
+    for idx in 0..100 {
+        let value = format!("needle filler {idx:03}");
+        conn.execute("INSERT INTO fallback(name) VALUES (?1)", [&value])
+            .expect("insert fallback row");
+    }
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let all_results = db
+        .search_tables(
+            &[
+                TableSummary {
+                    name: "best".to_string(),
+                },
+                TableSummary {
+                    name: "fallback".to_string(),
+                },
+            ],
+            "needle",
+            200,
+        )
+        .expect("search tables");
+    let results = db
+        .search_tables(
+            &[
+                TableSummary {
+                    name: "best".to_string(),
+                },
+                TableSummary {
+                    name: "fallback".to_string(),
+                },
+            ],
+            "needle",
+            3,
+        )
+        .expect("search tables");
+
+    assert_eq!(results.len(), 3);
+    assert_eq!(
+        results
+            .iter()
+            .map(|hit| (hit.table_name.clone(), hit.values.clone(), hit.score))
+            .collect::<Vec<_>>(),
+        all_results
+            .iter()
+            .take(3)
+            .map(|hit| (hit.table_name.clone(), hit.values.clone(), hit.score))
+            .collect::<Vec<_>>()
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn search_table_scores_against_full_values_not_truncated_preview() {
     let path = temp_db_path("search-full-value-scoring");
     let conn = Connection::open(&path).expect("create db");

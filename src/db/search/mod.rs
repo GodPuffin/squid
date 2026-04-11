@@ -111,6 +111,7 @@ impl Database {
         for table in tables {
             let mut hits = self.search_table_exact(&table.name, query, limit)?;
             all_results.append(&mut hits);
+            trim_all_table_hits(&mut all_results, limit);
         }
 
         sort_all_table_hits(&mut all_results);
@@ -262,6 +263,10 @@ fn trim_current_table_hits(results: &mut Vec<SearchHit>, limit: usize) {
 
 fn trim_exact_table_hits(results: &mut Vec<SearchHit>, limit: usize) {
     trim_search_hits(results, limit, sort_exact_table_hits);
+}
+
+fn trim_all_table_hits(results: &mut Vec<SearchHit>, limit: usize) {
+    trim_search_hits(results, limit, sort_all_table_hits);
 }
 
 fn trim_search_hits(results: &mut Vec<SearchHit>, limit: usize, sorter: fn(&mut [SearchHit])) {
