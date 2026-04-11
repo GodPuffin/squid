@@ -74,6 +74,25 @@ fn header_clicks_switch_modes() {
 }
 
 #[test]
+fn mouse_up_click_is_handled_without_prior_down() {
+    let mut app = app_with_mouse_data("mouse-up-header");
+    app.mode = AppMode::Browse;
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_up(layout.header_tabs.sql.x, layout.header_tabs.sql.y),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.mode, AppMode::Sql);
+}
+
+#[test]
 fn sql_completion_click_applies_selected_item() {
     let mut app = app_with_mouse_data("mouse-sql");
     app.mode = AppMode::Sql;
@@ -416,6 +435,15 @@ fn app_with_mouse_data(label: &str) -> App {
 fn mouse_down(column: u16, row: u16) -> MouseEvent {
     MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+fn mouse_up(column: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
         column,
         row,
         modifiers: KeyModifiers::NONE,
