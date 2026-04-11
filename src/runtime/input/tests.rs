@@ -34,13 +34,40 @@ fn search_accepts_numeric_input() {
         results: Vec::new(),
         selected_result: 0,
         result_offset: 0,
+        horizontal_offset: 0,
         result_limit: 10,
         submitted: false,
+        loading: false,
     });
 
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('1'))),
         Action::InputChar('1')
+    );
+}
+
+#[test]
+fn search_accepts_horizontal_navigation_keys() {
+    let mut app = test_app("search-horizontal");
+    app.search = Some(SearchState {
+        scope: SearchScope::AllTables,
+        query: String::new(),
+        results: Vec::new(),
+        selected_result: 0,
+        result_offset: 0,
+        horizontal_offset: 0,
+        result_limit: 10,
+        submitted: false,
+        loading: false,
+    });
+
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Left)),
+        Action::MoveLeft
+    );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Right)),
+        Action::MoveRight
     );
 }
 

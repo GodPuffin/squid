@@ -219,16 +219,6 @@ pub fn table_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
     Some((row - area.y - 2) as usize)
 }
 
-pub fn search_result_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
-    if column < area.x + 1 || column >= area.x + area.width.saturating_sub(1) {
-        return None;
-    }
-    if row < area.y + 2 || row >= area.y + area.height.saturating_sub(1) {
-        return None;
-    }
-    Some((row - area.y - 2) as usize)
-}
-
 pub fn root_layout(area: Rect) -> Vec<Rect> {
     Layout::default()
         .direction(Direction::Vertical)

@@ -60,6 +60,8 @@ fn search_action(key: KeyCode) -> Action {
         KeyCode::Esc => Action::CloseModal,
         KeyCode::Up => Action::MoveUp,
         KeyCode::Down => Action::MoveDown,
+        KeyCode::Left => Action::MoveLeft,
+        KeyCode::Right => Action::MoveRight,
         KeyCode::Enter => Action::Confirm,
         KeyCode::Backspace => Action::Backspace,
         KeyCode::Char(ch) if !ch.is_control() => Action::InputChar(ch),

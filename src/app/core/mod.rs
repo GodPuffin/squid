@@ -36,6 +36,7 @@ impl App {
             filter_modal: None,
             modal: None,
             search: None,
+            search_results_view_width: 0,
             recent_items,
             selected_recent: 0,
             status_message,

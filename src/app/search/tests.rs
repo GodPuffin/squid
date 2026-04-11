@@ -30,8 +30,50 @@ fn all_tables_search_starts_unsubmitted_and_confirm_runs_it() {
     assert!(app.search.as_ref().unwrap().results.is_empty());
 
     app.handle_search(Action::Confirm).unwrap();
+    assert!(app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    assert!(app.run_pending_work().unwrap());
     assert!(app.search.as_ref().unwrap().submitted);
+    assert!(!app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().results.is_empty());
+}
+
+#[test]
+fn large_current_table_search_starts_unsubmitted_and_confirm_runs_it() {
+    let path = temp_db_path("search-current-large");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(name TEXT)", [])
+        .expect("create table");
+    for idx in 0..2_100 {
+        let value = if idx == 2_050 {
+            "target match"
+        } else {
+            "filler value"
+        };
+        conn.execute("INSERT INTO demo(name) VALUES (?1)", [value])
+            .expect("insert row");
+    }
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    app.handle_search(Action::InputChar('t')).unwrap();
+    assert!(!app.search.as_ref().unwrap().submitted);
+    assert!(app.search.as_ref().unwrap().results.is_empty());
+
+    app.handle_search(Action::Confirm).unwrap();
+    assert!(app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().submitted);
+
+    assert!(app.run_pending_work().unwrap());
+    assert!(app.search.as_ref().unwrap().submitted);
+    assert!(!app.search.as_ref().unwrap().loading);
+    assert!(!app.search.as_ref().unwrap().results.is_empty());
+
+    let _ = fs::remove_file(path);
 }
 
 #[test]
@@ -41,13 +83,16 @@ fn editing_all_tables_query_clears_stale_results() {
     app.open_search(SearchScope::AllTables).unwrap();
     app.search.as_mut().unwrap().query = "alice".to_string();
     app.handle_search(Action::Confirm).unwrap();
+    assert!(app.run_pending_work().unwrap());
     assert!(app.search.as_ref().unwrap().submitted);
+    app.search.as_mut().unwrap().horizontal_offset = 16;
 
     app.handle_search(Action::InputChar('x')).unwrap();
     let search = app.search.as_ref().unwrap();
     assert!(!search.submitted);
     assert!(search.results.is_empty());
     assert_eq!(search.selected_result, 0);
+    assert_eq!(search.horizontal_offset, 0);
 }
 
 #[test]
@@ -107,12 +152,44 @@ fn current_table_search_can_jump_without_rowid_alias() {
     let mut app = App::load(path.clone()).expect("load app");
     app.focus_content();
     app.open_search(SearchScope::CurrentTable).unwrap();
-    app.handle_search(Action::InputChar('a')).unwrap();
-    app.handle_search(Action::InputChar('l')).unwrap();
+    app.handle_search(Action::InputChar('b')).unwrap();
+    app.handle_search(Action::InputChar('r')).unwrap();
+    app.handle_search(Action::InputChar('v')).unwrap();
     app.handle_search(Action::Confirm).unwrap();
 
     assert!(app.search.is_none());
-    assert_eq!(app.selected_row, 0);
+    assert_eq!(app.selected_row, 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn all_tables_search_can_jump_without_rowid_alias() {
+    let path = temp_db_path("search-shadowed-all-jump");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE demo(rowid INTEGER, _rowid_ INTEGER, oid INTEGER, name TEXT);
+         INSERT INTO demo(rowid, _rowid_, oid, name) VALUES
+             (10, 20, 30, 'alpha'),
+             (11, 21, 31, 'bravo');",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.handle_search(Action::InputChar('b')).unwrap();
+    app.handle_search(Action::InputChar('r')).unwrap();
+    app.handle_search(Action::InputChar('a')).unwrap();
+    app.handle_search(Action::InputChar('v')).unwrap();
+    app.handle_search(Action::InputChar('o')).unwrap();
+    app.handle_search(Action::Confirm).unwrap();
+    assert!(app.run_pending_work().unwrap());
+    app.handle_search(Action::Confirm).unwrap();
+
+    assert!(app.search.is_none());
+    assert_eq!(app.selected_row, 1);
 
     let _ = fs::remove_file(path);
 }
@@ -135,6 +212,86 @@ fn current_table_search_move_clamps_at_bounds() {
         search.selected_result,
         search.results.len().saturating_sub(1)
     );
+}
+
+#[test]
+fn all_tables_search_left_right_scrolls_and_clamps() {
+    let mut app = app_with_search_data("search-horizontal");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(24);
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "a very long search result that should scroll horizontally".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    for _ in 0..100 {
+        app.handle_search(Action::MoveRight).unwrap();
+    }
+    let max_offset = app.search.as_ref().unwrap().horizontal_offset;
+    assert!(max_offset > 0);
+
+    app.handle_search(Action::MoveRight).unwrap();
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, max_offset);
+
+    for _ in 0..100 {
+        app.handle_search(Action::MoveLeft).unwrap();
+    }
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
+}
+
+#[test]
+fn all_tables_search_does_not_scroll_when_result_fits_visible_width() {
+    let mut app = app_with_search_data("search-horizontal-fit");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(120);
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "short result".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    app.handle_search(Action::MoveRight).unwrap();
+
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
+}
+
+#[test]
+fn all_tables_search_clamps_horizontal_offset_after_resize() {
+    let mut app = app_with_search_data("search-horizontal-resize");
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.sync_search_results_view_width(24);
+    app.search.as_mut().unwrap().results = vec![SearchHit {
+        table_name: "main.customers".to_string(),
+        rowid: Some(1),
+        row_offset: 0,
+        row_label: "rowid 1".to_string(),
+        values: Vec::new(),
+        matched_columns: Vec::new(),
+        haystack: "a very long search result that should clamp after resize".to_string(),
+        score: 10,
+    }];
+    app.search.as_mut().unwrap().submitted = true;
+
+    app.handle_search(Action::MoveRight).unwrap();
+    app.handle_search(Action::MoveRight).unwrap();
+    assert!(app.search.as_ref().unwrap().horizontal_offset > 0);
+
+    app.sync_search_results_view_width(120);
+
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 
 fn app_with_search_data(label: &str) -> App {

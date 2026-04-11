@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::app::{App, PaneFocus, SearchScope};
+use crate::db::fuzzy_match_positions;
 
 use super::modals::shared::selection_style;
 use super::widgets::panel_block;
@@ -25,6 +26,14 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .block(panel_block(&search_title, app.focus == PaneFocus::Content))
         .wrap(Wrap { trim: false });
     frame.render_widget(query, sections[0]);
+
+    if search.loading {
+        let loading = Paragraph::new(search_loading_message(search.scope))
+            .block(panel_block("Results", app.focus == PaneFocus::Content))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(loading, sections[1]);
+        return;
+    }
 
     if matches!(search.scope, SearchScope::CurrentTable) {
         render_current_table_search(frame, app, sections[1]);
@@ -56,8 +65,8 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
                     Span::styled(hit.row_label.as_str(), Style::default().fg(Color::Gray)),
                     Span::raw("  "),
                 ];
-                spans.extend(highlight_spans(&hit.haystack, &search.query));
-                ListItem::new(Line::from(spans))
+                spans.extend(highlight_exact_spans(&hit.haystack, &search.query));
+                ListItem::new(Line::from(crop_spans(spans, search.horizontal_offset)))
             })
             .collect()
     };
@@ -76,6 +85,15 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     let Some(search) = &app.search else {
         return;
     };
+    if search.results.is_empty() {
+        let message = current_table_empty_message(search.query.as_str(), search.submitted);
+        let empty = Paragraph::new(message)
+            .block(panel_block("Results", app.focus == PaneFocus::Content))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(empty, area);
+        return;
+    }
+
     let headers = app.search_headers();
     let widths: Vec<Constraint> = headers.iter().map(|_| Constraint::Min(12)).collect();
     let header = Row::new(std::iter::once("#").chain(headers.iter().map(String::as_str)))
@@ -88,16 +106,11 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
         .take(search.result_limit)
         .map(|hit| {
             let styled_cells = std::iter::once(Cell::from(hit.row_label.as_str())).chain(
-                hit.values.iter().enumerate().map(|(idx, value)| {
-                    if hit.matched_columns.get(idx).copied().unwrap_or(false) {
-                        Cell::from(value.as_str()).style(
-                            Style::default()
-                                .fg(Color::LightYellow)
-                                .add_modifier(Modifier::BOLD),
-                        )
-                    } else {
-                        Cell::from(value.as_str())
-                    }
+                hit.values.iter().map(|value| {
+                    Cell::from(Line::from(highlight_current_table_value_spans(
+                        value,
+                        &search.query,
+                    )))
                 }),
             );
             Row::new(styled_cells)
@@ -117,7 +130,36 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-fn highlight_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
+fn current_table_empty_message(query: &str, submitted: bool) -> &'static str {
+    if query.is_empty() {
+        if submitted {
+            "Type to filter current table"
+        } else {
+            "Press Enter to search current table"
+        }
+    } else if submitted {
+        "No matches"
+    } else {
+        "Press Enter to search current table"
+    }
+}
+
+fn search_loading_message(scope: SearchScope) -> &'static str {
+    match scope {
+        SearchScope::CurrentTable => "Searching current table exhaustively...",
+        SearchScope::AllTables => "Searching all tables exhaustively...",
+    }
+}
+
+fn highlight_current_table_value_spans<'a>(value: &'a str, query: &str) -> Vec<Span<'a>> {
+    if exact_match_range(value, query).is_some() {
+        highlight_exact_spans(value, query)
+    } else {
+        highlight_fuzzy_spans(value, query)
+    }
+}
+
+fn highlight_fuzzy_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
     if query.is_empty() {
         return vec![Span::raw(haystack)];
     }
@@ -127,6 +169,35 @@ fn highlight_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
         return vec![Span::raw(haystack)];
     }
 
+    highlight_char_positions(haystack, &positions)
+}
+
+fn highlight_exact_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
+    if query.is_empty() {
+        return vec![Span::raw(haystack)];
+    }
+
+    let Some((start, end)) = exact_match_range(haystack, query) else {
+        return vec![Span::raw(haystack)];
+    };
+
+    let start_byte = byte_offset_for_char_index(haystack, start);
+    let end_byte = byte_offset_for_char_index(haystack, end);
+    let mut spans = Vec::new();
+    if start_byte > 0 {
+        spans.push(Span::raw(&haystack[..start_byte]));
+    }
+    spans.push(Span::styled(
+        &haystack[start_byte..end_byte],
+        search_highlight_style(),
+    ));
+    if end_byte < haystack.len() {
+        spans.push(Span::raw(&haystack[end_byte..]));
+    }
+    spans
+}
+
+fn highlight_char_positions<'a>(haystack: &'a str, positions: &[usize]) -> Vec<Span<'a>> {
     let mut spans = Vec::new();
     let mut normal_start = 0usize;
 
@@ -138,9 +209,7 @@ fn highlight_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
             let byte_end = byte_start + ch.len_utf8();
             spans.push(Span::styled(
                 &haystack[byte_start..byte_end],
-                Style::default()
-                    .fg(Color::LightYellow)
-                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                search_highlight_style(),
             ));
             normal_start = byte_end;
         }
@@ -153,29 +222,59 @@ fn highlight_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
     spans
 }
 
-fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
+fn exact_match_range(haystack: &str, query: &str) -> Option<(usize, usize)> {
     let haystack_lower: Vec<char> = haystack.to_lowercase().chars().collect();
     let query_lower: Vec<char> = query.to_lowercase().chars().collect();
-    let mut positions = Vec::new();
-    let mut search_index = 0_usize;
 
-    for needle in query_lower {
-        let mut found = None;
-        for (idx, candidate) in haystack_lower.iter().enumerate().skip(search_index) {
-            if *candidate == needle {
-                found = Some(idx);
-                break;
-            }
-        }
-        if let Some(idx) = found {
-            positions.push(idx);
-            search_index = idx + 1;
-        } else {
-            return Vec::new();
+    if query_lower.is_empty() || haystack_lower.len() < query_lower.len() {
+        return None;
+    }
+
+    for start in 0..=haystack_lower.len() - query_lower.len() {
+        if haystack_lower[start..start + query_lower.len()] == query_lower[..] {
+            return Some((start, start + query_lower.len()));
         }
     }
 
-    positions
+    None
+}
+
+fn crop_spans(spans: Vec<Span<'_>>, char_offset: usize) -> Vec<Span<'static>> {
+    let mut remaining = char_offset;
+    let mut cropped = Vec::new();
+
+    for span in spans {
+        let content = span.content.into_owned();
+        let content_len = content.chars().count();
+        if remaining >= content_len {
+            remaining -= content_len;
+            continue;
+        }
+
+        let start = byte_offset_for_char_index(&content, remaining);
+        cropped.push(Span::styled(content[start..].to_string(), span.style));
+        remaining = 0;
+    }
+
+    if cropped.is_empty() {
+        vec![Span::raw("")]
+    } else {
+        cropped
+    }
+}
+
+fn byte_offset_for_char_index(value: &str, char_index: usize) -> usize {
+    value
+        .char_indices()
+        .nth(char_index)
+        .map(|(byte_index, _)| byte_index)
+        .unwrap_or(value.len())
+}
+
+fn search_highlight_style() -> Style {
+    Style::default()
+        .fg(Color::LightYellow)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
 }
 
 #[cfg(test)]

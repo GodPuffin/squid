@@ -96,6 +96,7 @@ pub struct App {
     pub filter_modal: Option<FilterModalState>,
     pub modal: Option<ModalState>,
     pub search: Option<SearchState>,
+    pub search_results_view_width: usize,
     pub recent_items: Vec<RecentItem>,
     pub selected_recent: usize,
     pub status_message: Option<String>,

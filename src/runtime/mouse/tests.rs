@@ -6,7 +6,11 @@ use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 use rusqlite::Connection;
 
-use crate::app::{Action, App, AppMode, SqlCompletionItem, SqlCompletionState, SqlPane, SqlState};
+use crate::app::{
+    Action, App, AppMode, SearchScope, SearchState, SqlCompletionItem, SqlCompletionState, SqlPane,
+    SqlState,
+};
+use crate::db::SearchHit;
 use crate::ui::{detail_action_rects, layout_info};
 
 use super::{MouseState, contains, handle_mouse_event, is_double_click};
@@ -277,6 +281,121 @@ fn clicking_value_pane_twice_starts_editing() {
     .unwrap();
 
     assert!(app.detail_is_editing());
+}
+
+#[test]
+fn all_table_search_click_uses_list_row_geometry() {
+    let mut app = app_with_mouse_data("mouse-search-all-click");
+    app.search = Some(SearchState {
+        scope: SearchScope::AllTables,
+        query: "a".to_string(),
+        results: vec![
+            SearchHit {
+                table_name: "main.demo".to_string(),
+                rowid: Some(1),
+                row_offset: 0,
+                row_label: "rowid 1".to_string(),
+                values: vec!["alice".to_string()],
+                matched_columns: Vec::new(),
+                haystack: "alice".to_string(),
+                score: 10,
+            },
+            SearchHit {
+                table_name: "main.demo".to_string(),
+                rowid: Some(2),
+                row_offset: 1,
+                row_label: "rowid 2".to_string(),
+                values: vec!["bob".to_string()],
+                matched_columns: Vec::new(),
+                haystack: "bob".to_string(),
+                score: 9,
+            },
+        ],
+        selected_result: 0,
+        result_offset: 0,
+        horizontal_offset: 0,
+        result_limit: 10,
+        submitted: true,
+        loading: false,
+    });
+
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let results = layout.search_results.unwrap();
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(results.x + 1, results.y + 2),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.search.as_ref().unwrap().selected_result, 1);
+}
+
+#[test]
+fn all_table_search_horizontal_mouse_scroll_moves_offset() {
+    let mut app = app_with_mouse_data("mouse-search-all-scroll");
+    app.search = Some(SearchState {
+        scope: SearchScope::AllTables,
+        query: "a".to_string(),
+        results: vec![SearchHit {
+            table_name: "main.demo".to_string(),
+            rowid: Some(1),
+            row_offset: 0,
+            row_label: "rowid 1".to_string(),
+            values: vec!["alice".to_string()],
+            matched_columns: Vec::new(),
+            haystack:
+                "a very long search result that needs scrolling even inside a narrow results pane"
+                    .to_string(),
+            score: 10,
+        }],
+        selected_result: 0,
+        result_offset: 0,
+        horizontal_offset: 0,
+        result_limit: 10,
+        submitted: true,
+        loading: false,
+    });
+
+    let layout = layout_info(Rect::new(0, 0, 50, 24), &app);
+    let results = layout.search_results.unwrap();
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: results.x + 1,
+            row: results.y + 1,
+            modifiers: KeyModifiers::NONE,
+        },
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 8);
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        MouseEvent {
+            kind: MouseEventKind::ScrollLeft,
+            column: results.x + 1,
+            row: results.y + 1,
+            modifiers: KeyModifiers::NONE,
+        },
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 
 fn app_with_mouse_data(label: &str) -> App {

@@ -81,11 +81,14 @@ impl App {
                 SearchScope::AllTables => "all tables",
             };
             match search.scope {
-                SearchScope::CurrentTable => format!(
+                SearchScope::CurrentTable if search.submitted => format!(
                     "Search {scope}  Type to filter  Up/Down select  Enter jump  Esc close  Backspace delete"
                 ),
+                SearchScope::CurrentTable => format!(
+                    "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close  Backspace delete"
+                ),
                 SearchScope::AllTables => format!(
-                    "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close"
+                    "Search {scope}  Type query then Enter to run  Up/Down select  Left/Right scroll  Enter jump  Esc close"
                 ),
             }
         } else {
