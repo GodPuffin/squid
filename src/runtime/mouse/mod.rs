@@ -12,7 +12,7 @@ pub struct MouseState {
     last_home_click: Option<(usize, Instant)>,
     last_table_row_click: Option<(usize, Instant)>,
     last_sql_history_click: Option<(usize, Instant)>,
-    last_left_down: Option<(u16, u16, Instant)>,
+    last_left_down: Option<(u16, u16)>,
 }
 
 pub fn handle_mouse_event(
@@ -22,7 +22,7 @@ pub fn handle_mouse_event(
     state: &mut MouseState,
     now: Instant,
 ) -> Result<bool> {
-    let left_click = is_left_click(mouse, state, now);
+    let left_click = is_left_click(mouse, state);
 
     app.sync_search_results_view_width(
         layout
@@ -430,21 +430,13 @@ fn is_double_click(previous: Option<(usize, Instant)>, selected: usize, now: Ins
     })
 }
 
-fn is_left_click(mouse: MouseEvent, state: &mut MouseState, now: Instant) -> bool {
+fn is_left_click(mouse: MouseEvent, state: &mut MouseState) -> bool {
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            state.last_left_down = Some((mouse.column, mouse.row, now));
+            state.last_left_down = Some((mouse.column, mouse.row));
             true
         }
-        MouseEventKind::Up(MouseButton::Left) => {
-            if let Some((last_col, last_row, _)) = state.last_left_down {
-                state.last_left_down = None;
-                if last_col == mouse.column && last_row == mouse.row {
-                    return false;
-                }
-            }
-            true
-        }
+        MouseEventKind::Up(MouseButton::Left) => state.last_left_down.take().is_none(),
         _ => false,
     }
 }

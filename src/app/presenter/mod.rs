@@ -80,16 +80,23 @@ impl App {
                 SearchScope::CurrentTable => "current table",
                 SearchScope::AllTables => "all tables",
             };
-            match search.scope {
-                SearchScope::CurrentTable if search.submitted => format!(
-                    "Search {scope}  Type to filter  Up/Down select  Enter jump  Esc close  Backspace delete"
-                ),
-                SearchScope::CurrentTable => format!(
-                    "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close  Backspace delete"
-                ),
-                SearchScope::AllTables => format!(
-                    "Search {scope}  Type query then Enter to run  Up/Down select  Left/Right scroll  Enter jump  Esc close"
-                ),
+            if search.loading {
+                format!("Searching {scope}")
+            } else {
+                match search.scope {
+                    SearchScope::CurrentTable if self.current_table_search_is_live() => format!(
+                        "Search {scope}  Type to filter  Up/Down select  Enter jump  Esc close  Backspace delete"
+                    ),
+                    SearchScope::CurrentTable if search.submitted => format!(
+                        "Search {scope}  Edit query then Enter to rerun  Up/Down select  Enter jump  Esc close  Backspace delete"
+                    ),
+                    SearchScope::CurrentTable => format!(
+                        "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close  Backspace delete"
+                    ),
+                    SearchScope::AllTables => format!(
+                        "Search {scope}  Type query then Enter to run  Up/Down select  Left/Right scroll  Enter jump  Esc close"
+                    ),
+                }
             }
         } else {
             "Left/Right or Tab pane  Up/Down move  Enter row details  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
