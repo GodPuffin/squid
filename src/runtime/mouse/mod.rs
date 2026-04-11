@@ -336,8 +336,8 @@ pub fn handle_mouse_event(
             app.select_table_by_index(index)?;
             if app.is_home() {
                 handle_row_double_click(app, state, now)?;
-            } else if contains(layout.content, column, row) {
-                state.last_table_row_click = None;
+            } else {
+                clear_row_click_state(state);
             }
         } else if let Some(index) = ui::table_row_at(layout.content, column, row) {
             app.focus_content();

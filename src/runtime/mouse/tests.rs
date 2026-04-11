@@ -417,12 +417,68 @@ fn all_table_search_horizontal_mouse_scroll_moves_offset() {
     assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 
+#[test]
+fn switching_tables_resets_row_double_click_state() {
+    let mut app = app_with_two_tables("mouse-table-switch");
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let mut state = MouseState::default();
+    let now = Instant::now();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.content.x + 1, layout.content.y + 1),
+        &mut state,
+        now,
+    )
+    .unwrap();
+    assert!(app.detail.is_none());
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.tables.x + 1, layout.tables.y + 2),
+        &mut state,
+        now + Duration::from_millis(50),
+    )
+    .unwrap();
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.content.x + 1, layout.content.y + 1),
+        &mut state,
+        now + Duration::from_millis(100),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
 fn app_with_mouse_data(label: &str) -> App {
     let path = temp_db_path(label);
     let conn = Connection::open(&path).expect("create db");
     conn.execute_batch(
         "CREATE TABLE demo(name TEXT, age INTEGER);
          INSERT INTO demo(name, age) VALUES ('alice', 30), ('bob', 40);",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let app = App::load(path.clone()).expect("load app");
+    let _ = fs::remove_file(path);
+    app
+}
+
+fn app_with_two_tables(label: &str) -> App {
+    let path = temp_db_path(label);
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE alpha(name TEXT, age INTEGER);
+         INSERT INTO alpha(name, age) VALUES ('alice', 30), ('bob', 40);
+         CREATE TABLE beta(name TEXT, age INTEGER);
+         INSERT INTO beta(name, age) VALUES ('cara', 20), ('drew', 50);",
     )
     .expect("seed db");
     drop(conn);
