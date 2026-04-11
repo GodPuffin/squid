@@ -456,6 +456,29 @@ fn switching_tables_resets_row_double_click_state() {
     assert!(app.detail.is_none());
 }
 
+#[test]
+fn long_press_emits_single_click_when_down_and_up_are_both_reported() {
+    let mut app = app_with_mouse_data("mouse-long-press");
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let mut state = MouseState::default();
+    let now = Instant::now();
+    let column = layout.content.x + 1;
+    let row = layout.content.y + 1;
+
+    handle_mouse_event(&mut app, &layout, mouse_down(column, row), &mut state, now).unwrap();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_up(column, row),
+        &mut state,
+        now + Duration::from_millis(600),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
 fn app_with_mouse_data(label: &str) -> App {
     let path = temp_db_path(label);
     let conn = Connection::open(&path).expect("create db");

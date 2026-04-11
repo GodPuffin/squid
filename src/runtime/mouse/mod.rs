@@ -437,13 +437,11 @@ fn is_left_click(mouse: MouseEvent, state: &mut MouseState, now: Instant) -> boo
             true
         }
         MouseEventKind::Up(MouseButton::Left) => {
-            if let Some((last_col, last_row, last_time)) = state.last_left_down
-                && last_col == mouse.column
-                && last_row == mouse.row
-                && now.duration_since(last_time) <= Duration::from_millis(500)
-            {
+            if let Some((last_col, last_row, _)) = state.last_left_down {
                 state.last_left_down = None;
-                return false;
+                if last_col == mouse.column && last_row == mouse.row {
+                    return false;
+                }
             }
             true
         }
