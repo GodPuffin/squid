@@ -12,6 +12,11 @@ fn fuzzy_match_positions_returns_empty_when_query_cannot_match() {
 }
 
 #[test]
+fn fuzzy_match_positions_preserve_original_indices_for_casefold_expansions() {
+    assert_eq!(super::fuzzy_match_positions("İx", "ix"), vec![0, 1]);
+}
+
+#[test]
 fn highlight_spans_marks_only_matching_positions() {
     let spans = super::highlight_fuzzy_spans("abc", "ac");
     assert_eq!(spans.len(), 3);
@@ -20,6 +25,16 @@ fn highlight_spans_marks_only_matching_positions() {
     assert_eq!(spans[2].content.as_ref(), "c");
     assert_ne!(spans[0].style, spans[1].style);
     assert_ne!(spans[2].style, spans[1].style);
+}
+
+#[test]
+fn highlight_fuzzy_spans_handles_casefold_expansion_indices() {
+    let spans = super::highlight_fuzzy_spans("İx", "ix");
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].content.as_ref(), "İ");
+    assert_eq!(spans[1].content.as_ref(), "x");
+    assert_eq!(spans[0].style, super::search_highlight_style());
+    assert_eq!(spans[1].style, super::search_highlight_style());
 }
 
 #[test]
@@ -44,23 +59,23 @@ fn current_table_highlight_prefers_exact_match_when_available() {
 #[test]
 fn current_table_empty_message_handles_empty_query() {
     assert_eq!(
-        super::current_table_empty_message("", true),
+        super::current_table_empty_message("", true, true),
         "Type to filter current table"
     );
     assert_eq!(
-        super::current_table_empty_message("", false),
-        "Press Enter to search current table"
+        super::current_table_empty_message("", false, false),
+        "Type query then Enter to search current table"
     );
 }
 
 #[test]
 fn current_table_empty_message_handles_non_empty_query() {
     assert_eq!(
-        super::current_table_empty_message("needle", true),
+        super::current_table_empty_message("needle", true, true),
         "No matches"
     );
     assert_eq!(
-        super::current_table_empty_message("needle", false),
+        super::current_table_empty_message("needle", false, false),
         "Press Enter to search current table"
     );
 }

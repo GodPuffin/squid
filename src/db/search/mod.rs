@@ -63,6 +63,8 @@ impl Database {
             &filter_params,
             |index, rowid, values| {
                 let summary = render_search_summary(&columns, &values);
+                let preview = render_search_preview(&columns, &values);
+                let summary_score = fuzzy_score(&summary, query);
                 let column_scores = values
                     .iter()
                     .map(|value| current_table_match_score(value, query))
@@ -71,7 +73,15 @@ impl Database {
                     .iter()
                     .map(|score| score.is_some())
                     .collect::<Vec<_>>();
-                if let Some(score) = column_scores.iter().flatten().copied().max() {
+                let score = column_scores
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .max()
+                    .into_iter()
+                    .chain(summary_score)
+                    .max();
+                if let Some(score) = score {
                     let row_label = rowid
                         .map(|rowid| format!("rowid {rowid}"))
                         .unwrap_or_else(|| format!("row {}", index + 1));
@@ -82,7 +92,7 @@ impl Database {
                         row_label,
                         values,
                         matched_columns,
-                        haystack: summary,
+                        haystack: preview,
                         score,
                     });
                     trim_current_table_hits(&mut results, limit);
@@ -251,6 +261,29 @@ fn render_search_summary(columns: &[String], values: &[String]) -> String {
         .join(" | ")
 }
 
+fn render_search_preview(columns: &[String], values: &[String]) -> String {
+    columns
+        .iter()
+        .zip(values.iter())
+        .map(|(column, value)| format!("{column}: {}", truncate_search_preview(value)))
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn truncate_search_preview(value: &str) -> String {
+    const MAX_PREVIEW_CHARS: usize = 80;
+
+    if value.chars().count() <= MAX_PREVIEW_CHARS {
+        return value.to_string();
+    }
+
+    let truncated: String = value
+        .chars()
+        .take(MAX_PREVIEW_CHARS.saturating_sub(3))
+        .collect();
+    format!("{truncated}...")
+}
+
 fn current_table_match_score(value: &str, query: &str) -> Option<i64> {
     exact_match_score(value, query)
         .map(|score| score.saturating_add(CURRENT_TABLE_EXACT_MATCH_BOOST))
@@ -310,8 +343,15 @@ pub(crate) fn fuzzy_score(haystack: &str, query: &str) -> Option<i64> {
 }
 
 pub(crate) fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
-    let haystack_lower: Vec<char> = haystack.to_lowercase().chars().collect();
-    let query_lower: Vec<char> = query.to_lowercase().chars().collect();
+    let mut haystack_lower = Vec::new();
+    let mut original_char_indexes = Vec::new();
+    for (original_index, ch) in haystack.chars().enumerate() {
+        for lower in ch.to_lowercase() {
+            haystack_lower.push(lower);
+            original_char_indexes.push(original_index);
+        }
+    }
+    let query_lower: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
 
     if haystack_lower.is_empty() || query_lower.is_empty() {
         return Vec::new();
@@ -323,7 +363,7 @@ pub(crate) fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
             continue;
         }
 
-        let mut positions = vec![start_idx];
+        let mut positions = vec![original_char_indexes[start_idx]];
         let mut search_index = start_idx + 1;
         let mut matched = true;
 
@@ -337,7 +377,7 @@ pub(crate) fn fuzzy_match_positions(haystack: &str, query: &str) -> Vec<usize> {
                 matched = false;
                 break;
             };
-            positions.push(idx);
+            positions.push(original_char_indexes[idx]);
             search_index = idx + 1;
         }
 

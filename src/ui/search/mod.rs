@@ -86,7 +86,11 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
         return;
     };
     if search.results.is_empty() {
-        let message = current_table_empty_message(search.query.as_str(), search.submitted);
+        let message = current_table_empty_message(
+            search.query.as_str(),
+            search.submitted,
+            app.current_table_search_is_live(),
+        );
         let empty = Paragraph::new(message)
             .block(panel_block("Results", app.focus == PaneFocus::Content))
             .wrap(Wrap { trim: false });
@@ -130,15 +134,19 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-fn current_table_empty_message(query: &str, submitted: bool) -> &'static str {
-    if query.is_empty() {
-        if submitted {
+fn current_table_empty_message(query: &str, submitted: bool, live_search: bool) -> &'static str {
+    if live_search {
+        if query.is_empty() {
             "Type to filter current table"
+        } else if submitted {
+            "No matches"
         } else {
-            "Press Enter to search current table"
+            "Type to filter current table"
         }
-    } else if submitted {
+    } else if submitted && !query.is_empty() {
         "No matches"
+    } else if query.is_empty() {
+        "Type query then Enter to search current table"
     } else {
         "Press Enter to search current table"
     }

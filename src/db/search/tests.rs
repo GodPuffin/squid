@@ -66,6 +66,35 @@ fn search_table_prefers_exact_value_match_over_earlier_fuzzy_match() {
 }
 
 #[test]
+fn search_table_keeps_row_matches_that_span_multiple_values() {
+    let path = temp_db_path("search-current-row-spanning");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(name TEXT, age TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name, age) VALUES ('alice', '30')", [])
+        .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let results = db
+        .search_table(
+            "demo",
+            &["name".to_string(), "age".to_string()],
+            &[],
+            &[],
+            "alice30",
+            10,
+        )
+        .expect("search table");
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].values, vec!["alice", "30"]);
+    assert_eq!(results[0].matched_columns, vec![false, false]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn search_table_keeps_hits_when_rowid_aliases_are_shadowed() {
     let path = temp_db_path("search-shadowed-rowid-current");
     let conn = Connection::open(&path).expect("create db");
@@ -354,7 +383,8 @@ fn search_table_scores_against_full_values_not_truncated_preview() {
         .expect("search table");
 
     assert_eq!(results.len(), 1);
-    assert!(results[0].haystack.contains("needle"));
+    assert!(!results[0].haystack.contains("needle"));
+    assert!(results[0].haystack.len() < long_text.len());
 
     let _ = fs::remove_file(path);
 }

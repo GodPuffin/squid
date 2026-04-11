@@ -74,6 +74,25 @@ fn header_clicks_switch_modes() {
 }
 
 #[test]
+fn mouse_up_click_is_handled_without_prior_down() {
+    let mut app = app_with_mouse_data("mouse-up-header");
+    app.mode = AppMode::Browse;
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_up(layout.header_tabs.sql.x, layout.header_tabs.sql.y),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.mode, AppMode::Sql);
+}
+
+#[test]
 fn sql_completion_click_applies_selected_item() {
     let mut app = app_with_mouse_data("mouse-sql");
     app.mode = AppMode::Sql;
@@ -398,6 +417,97 @@ fn all_table_search_horizontal_mouse_scroll_moves_offset() {
     assert_eq!(app.search.as_ref().unwrap().horizontal_offset, 0);
 }
 
+#[test]
+fn switching_tables_resets_row_double_click_state() {
+    let mut app = app_with_two_tables("mouse-table-switch");
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let mut state = MouseState::default();
+    let now = Instant::now();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.content.x + 1, layout.content.y + 1),
+        &mut state,
+        now,
+    )
+    .unwrap();
+    assert!(app.detail.is_none());
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.tables.x + 1, layout.tables.y + 2),
+        &mut state,
+        now + Duration::from_millis(50),
+    )
+    .unwrap();
+
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.content.x + 1, layout.content.y + 1),
+        &mut state,
+        now + Duration::from_millis(100),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
+#[test]
+fn long_press_emits_single_click_when_down_and_up_are_both_reported() {
+    let mut app = app_with_mouse_data("mouse-long-press");
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let mut state = MouseState::default();
+    let now = Instant::now();
+    let column = layout.content.x + 1;
+    let row = layout.content.y + 1;
+
+    handle_mouse_event(&mut app, &layout, mouse_down(column, row), &mut state, now).unwrap();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_up(column, row),
+        &mut state,
+        now + Duration::from_millis(600),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
+#[test]
+fn mouse_up_after_left_down_does_not_count_as_second_click() {
+    let mut app = app_with_mouse_data("mouse-up-drift");
+    let layout = layout_info(Rect::new(0, 0, 100, 30), &app);
+    let mut state = MouseState::default();
+    let now = Instant::now();
+    let row = layout.content.y + 2;
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(layout.content.x + 1, row),
+        &mut state,
+        now,
+    )
+    .unwrap();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_up(layout.content.x + 2, row),
+        &mut state,
+        now + Duration::from_millis(50),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
 fn app_with_mouse_data(label: &str) -> App {
     let path = temp_db_path(label);
     let conn = Connection::open(&path).expect("create db");
@@ -413,9 +523,35 @@ fn app_with_mouse_data(label: &str) -> App {
     app
 }
 
+fn app_with_two_tables(label: &str) -> App {
+    let path = temp_db_path(label);
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute_batch(
+        "CREATE TABLE alpha(name TEXT, age INTEGER);
+         INSERT INTO alpha(name, age) VALUES ('alice', 30), ('bob', 40);
+         CREATE TABLE beta(name TEXT, age INTEGER);
+         INSERT INTO beta(name, age) VALUES ('cara', 20), ('drew', 50);",
+    )
+    .expect("seed db");
+    drop(conn);
+
+    let app = App::load(path.clone()).expect("load app");
+    let _ = fs::remove_file(path);
+    app
+}
+
 fn mouse_down(column: u16, row: u16) -> MouseEvent {
     MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+fn mouse_up(column: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
         column,
         row,
         modifiers: KeyModifiers::NONE,

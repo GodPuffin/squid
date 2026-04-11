@@ -4,7 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use crate::app::{App, FilterPane, FilterRule, ModalPane, ModalState, SortRule, TableConfig};
+use crate::app::{
+    App, FilterPane, FilterRule, ModalPane, ModalState, SearchScope, SearchState, SortRule,
+    TableConfig,
+};
 use crate::db::FilterMode;
 
 #[test]
@@ -51,6 +54,31 @@ fn footer_hint_changes_with_active_modal_state() {
     app.open_filter_modal();
     assert_eq!(app.filter_modal_pane(), Some(FilterPane::Columns));
     assert!(app.footer_hint().contains("Enter apply"));
+}
+
+#[test]
+fn footer_hint_matches_current_table_search_mode() {
+    let mut app = app_with_presenter_data("presenter-search-footer");
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    assert!(app.footer_hint().contains("Type to filter"));
+
+    app.preview.total_rows = 2_001;
+    app.search = Some(SearchState {
+        scope: SearchScope::CurrentTable,
+        query: "needle".to_string(),
+        results: Vec::new(),
+        selected_result: 0,
+        result_offset: 0,
+        horizontal_offset: 0,
+        result_limit: 10,
+        submitted: true,
+        loading: false,
+    });
+    assert!(app.footer_hint().contains("Edit query then Enter to rerun"));
+
+    app.search.as_mut().unwrap().loading = true;
+    assert!(app.footer_hint().contains("Searching current table"));
+    assert!(!app.footer_hint().contains("Esc close"));
 }
 
 #[test]
