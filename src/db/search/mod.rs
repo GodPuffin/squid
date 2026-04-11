@@ -277,7 +277,10 @@ fn truncate_search_preview(value: &str) -> String {
         return value.to_string();
     }
 
-    let truncated: String = value.chars().take(MAX_PREVIEW_CHARS.saturating_sub(3)).collect();
+    let truncated: String = value
+        .chars()
+        .take(MAX_PREVIEW_CHARS.saturating_sub(3))
+        .collect();
     format!("{truncated}...")
 }
 
