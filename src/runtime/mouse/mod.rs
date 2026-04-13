@@ -234,7 +234,8 @@ pub fn handle_mouse_event(
                 let buttons = detail_action_rects(detail.header, detail.footer);
                 if app.detail_has_changes() && contains(buttons.header_save, column, row) {
                     app.handle(Action::SaveDetail)?;
-                } else if app.detail_has_changes() && contains(buttons.header_discard, column, row) {
+                } else if app.detail_has_changes() && contains(buttons.header_discard, column, row)
+                {
                     app.handle(Action::DiscardDetail)?;
                 } else if let Some(index) = ui::list_row_at(detail.fields, column, row) {
                     app.detail_select_field(index);
