@@ -228,27 +228,37 @@ pub fn handle_mouse_event(
 
     if let Some(detail) = &layout.detail {
         if left_click {
-            let buttons = detail_action_rects(detail.header, detail.footer);
-            if app.detail_has_changes() && contains(buttons.header_save, column, row) {
-                app.handle(Action::SaveDetail)?;
-            } else if app.detail_has_changes() && contains(buttons.header_discard, column, row) {
-                app.handle(Action::DiscardDetail)?;
-            } else if let Some(index) = ui::list_row_at(detail.fields, column, row) {
-                app.detail_select_field(index);
-            } else if contains(detail.value, column, row) {
-                if app.detail_is_editing() {
-                    return Ok(false);
-                }
-                let should_edit = app.detail_pane() == Some(crate::app::DetailPane::Value)
-                    && !app.detail_is_editing()
-                    && app.detail_selected_field_is_editable();
-                app.detail_focus_value();
-                if should_edit {
-                    app.handle(Action::EditDetail)?;
+            if !contains(detail.area, column, row) {
+                app.handle(Action::CloseModal)?;
+            } else {
+                let buttons = detail_action_rects(detail.header, detail.footer);
+                if app.detail_has_changes() && contains(buttons.header_save, column, row) {
+                    app.handle(Action::SaveDetail)?;
+                } else if app.detail_has_changes() && contains(buttons.header_discard, column, row)
+                {
+                    app.handle(Action::DiscardDetail)?;
+                } else if let Some(index) = ui::list_row_at(detail.fields, column, row) {
+                    app.detail_select_field(index);
+                } else if contains(detail.value, column, row) {
+                    if app.detail_is_editing() {
+                        return Ok(false);
+                    }
+                    let should_edit = app.detail_pane() == Some(crate::app::DetailPane::Value)
+                        && !app.detail_is_editing()
+                        && app.detail_selected_field_is_editable();
+                    app.detail_focus_value();
+                    if should_edit {
+                        app.handle(Action::EditDetail)?;
+                    }
                 }
             }
         } else {
             match mouse.kind {
+                MouseEventKind::Down(MouseButton::Right) => {
+                    if !contains(detail.area, column, row) {
+                        app.handle(Action::CloseModal)?;
+                    }
+                }
                 MouseEventKind::ScrollUp => {
                     if let Some(index) = ui::list_row_at(detail.fields, column, row) {
                         app.detail_select_field(index);
