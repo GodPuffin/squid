@@ -213,6 +213,26 @@ fn outside_click_closes_filter_modal() {
 }
 
 #[test]
+fn outside_click_closes_detail_modal() {
+    let mut app = app_with_mouse_data("mouse-detail-close");
+    app.focus_content();
+    app.handle(Action::Confirm).unwrap();
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(0, 0),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert!(app.detail.is_none());
+}
+
+#[test]
 fn detail_header_save_button_applies_row_changes() {
     let mut app = app_with_mouse_data("mouse-detail-save");
     app.focus_content();
