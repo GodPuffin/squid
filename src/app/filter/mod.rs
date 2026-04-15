@@ -58,7 +58,7 @@ impl App {
             Action::MoveRight | Action::ToggleFocus => self.filter_modal_move_right(),
             Action::MoveUp => self.filter_modal_move_up(),
             Action::MoveDown => self.filter_modal_move_down(),
-            Action::ToggleItem => self.filter_modal_cycle_mode(),
+            Action::ToggleItem => self.filter_modal_toggle_current_item()?,
             Action::Confirm => self.apply_filter_modal_rule()?,
             Action::Delete => self.delete_filter_modal_rule()?,
             Action::Clear => self.clear_all_filters()?,
@@ -216,6 +216,27 @@ impl App {
                 }
             }
         }
+    }
+
+    fn filter_modal_toggle_current_item(&mut self) -> Result<()> {
+        let Some(pane) = self.filter_modal.as_ref().map(|modal| modal.pane) else {
+            return Ok(());
+        };
+
+        match pane {
+            FilterPane::Columns => {
+                let index = self
+                    .filter_modal
+                    .as_ref()
+                    .map(|modal| modal.column_index)
+                    .unwrap_or(0);
+                self.modal_toggle_column(index)?;
+            }
+            FilterPane::Modes | FilterPane::Draft => self.filter_modal_cycle_mode(),
+            FilterPane::Active => {}
+        }
+
+        Ok(())
     }
 
     fn filter_modal_cycle_mode(&mut self) {

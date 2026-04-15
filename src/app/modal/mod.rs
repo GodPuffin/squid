@@ -195,7 +195,7 @@ impl App {
         Ok(())
     }
 
-    fn modal_toggle_column(&mut self, index: usize) -> Result<()> {
+    pub(super) fn modal_toggle_column(&mut self, index: usize) -> Result<()> {
         if let Some(config) = self.current_config_mut()
             && index < config.visible_columns.len()
         {

@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         filter_layout.area,
         "Filters",
         "Pick a column, choose an operator, and apply a row filter",
-        "Tab into Draft to type | Space adds space in Draft or cycles operator in Modes | Enter applies",
+        "Space toggles columns, adds space in Draft, or cycles operator in Modes | Enter applies",
         filter_layout.header,
         filter_layout.footer,
     );
