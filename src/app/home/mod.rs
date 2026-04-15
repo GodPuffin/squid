@@ -143,12 +143,21 @@ impl AppStorage {
         let conn = Self::open_at(storage_path)?;
         let encoded = path_to_storage_bytes(&normalized);
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM recent_databases WHERE path = ?1", [encoded.clone()])?;
+        tx.execute(
+            "DELETE FROM recent_databases WHERE path = ?1",
+            [encoded.clone()],
+        )?;
         tx.execute("DELETE FROM sessions WHERE path = ?1", [encoded.clone()])?;
         tx.execute("DELETE FROM sql_history WHERE path = ?1", [encoded.clone()])?;
-        tx.execute("DELETE FROM hidden_columns WHERE path = ?1", [encoded.clone()])?;
+        tx.execute(
+            "DELETE FROM hidden_columns WHERE path = ?1",
+            [encoded.clone()],
+        )?;
         tx.execute("DELETE FROM sort_rules WHERE path = ?1", [encoded.clone()])?;
-        tx.execute("DELETE FROM filter_rules WHERE path = ?1", [encoded.clone()])?;
+        tx.execute(
+            "DELETE FROM filter_rules WHERE path = ?1",
+            [encoded.clone()],
+        )?;
 
         let last_opened = tx
             .query_row(
@@ -178,7 +187,9 @@ impl AppStorage {
                 |row| row.get::<_, Vec<u8>>(0),
             )
             .optional()?;
-        bytes.map(|value| path_from_storage_bytes(&value)).transpose()
+        bytes
+            .map(|value| path_from_storage_bytes(&value))
+            .transpose()
     }
 
     pub fn load_session(path: &Path) -> Result<Option<StoredSession>> {
@@ -387,9 +398,15 @@ impl AppStorage {
         )?;
 
         tx.execute("DELETE FROM sql_history WHERE path = ?1", [encoded.clone()])?;
-        tx.execute("DELETE FROM hidden_columns WHERE path = ?1", [encoded.clone()])?;
+        tx.execute(
+            "DELETE FROM hidden_columns WHERE path = ?1",
+            [encoded.clone()],
+        )?;
         tx.execute("DELETE FROM sort_rules WHERE path = ?1", [encoded.clone()])?;
-        tx.execute("DELETE FROM filter_rules WHERE path = ?1", [encoded.clone()])?;
+        tx.execute(
+            "DELETE FROM filter_rules WHERE path = ?1",
+            [encoded.clone()],
+        )?;
 
         for (position, entry) in session.sql_history.iter().enumerate() {
             tx.execute(
@@ -404,7 +421,11 @@ impl AppStorage {
                 tx.execute(
                     "INSERT INTO hidden_columns(path, table_name, column_name)
                      VALUES (?1, ?2, ?3)",
-                    params![encoded.clone(), table_state.table_name.as_str(), column_name],
+                    params![
+                        encoded.clone(),
+                        table_state.table_name.as_str(),
+                        column_name
+                    ],
                 )?;
             }
 
@@ -445,7 +466,10 @@ impl AppStorage {
     fn open_at(path: &Path) -> Result<Connection> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create app storage directory {}", parent.display())
+                format!(
+                    "failed to create app storage directory {}",
+                    parent.display()
+                )
             })?;
         }
 
@@ -519,7 +543,11 @@ impl AppStorage {
         } else {
             env::var_os("XDG_CONFIG_HOME")
                 .map(PathBuf::from)
-                .or_else(|| env::var_os("HOME").map(PathBuf::from).map(|path| path.join(".config")))
+                .or_else(|| {
+                    env::var_os("HOME")
+                        .map(PathBuf::from)
+                        .map(|path| path.join(".config"))
+                })
         }
         .context("unable to determine config directory for app storage")?;
 

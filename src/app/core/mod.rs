@@ -703,33 +703,33 @@ impl App {
         self.sql.cursor = session.sql_cursor.min(self.sql.query.len());
         self.sql.focus = session.sql_focus;
         self.sql.history = session.sql_history;
-        self.sql.selected_history = self
-            .sql
-            .history
-            .len()
-            .saturating_sub(1);
+        self.sql.selected_history = self.sql.history.len().saturating_sub(1);
         self.sql.result = SqlResultState::Empty;
         self.sql.result_scroll = 0;
         self.configs = self.restore_table_configs(&session.table_states)?;
         self.selected_table = session
             .selected_table_name
             .as_deref()
-            .and_then(|table_name| self.tables.iter().position(|table| table.name == table_name))
+            .and_then(|table_name| {
+                self.tables
+                    .iter()
+                    .position(|table| table.name == table_name)
+            })
             .unwrap_or(0);
         self.selected_row = session.selected_row;
         self.row_offset = session.row_offset;
         self.schema_offset = session.schema_offset;
         self.refresh_preview()?;
 
-        if let (Some(table_name), Some(rowid)) =
-            (self.selected_table_name().map(str::to_owned), session.selected_row_rowid)
-            && let Some(row_offset) = self.db_ref()?.locate_row_offset(
-                &table_name,
-                rowid,
-                &self.current_sort_clauses(),
-                &self.current_filter_clauses(),
-            )?
-        {
+        if let (Some(table_name), Some(rowid)) = (
+            self.selected_table_name().map(str::to_owned),
+            session.selected_row_rowid,
+        ) && let Some(row_offset) = self.db_ref()?.locate_row_offset(
+            &table_name,
+            rowid,
+            &self.current_sort_clauses(),
+            &self.current_filter_clauses(),
+        )? {
             self.selected_row = row_offset;
         }
 
@@ -753,38 +753,49 @@ impl App {
         };
 
         for table_state in stored_tables {
-            if !self.tables.iter().any(|table| table.name == table_state.table_name) {
+            if !self
+                .tables
+                .iter()
+                .any(|table| table.name == table_state.table_name)
+            {
                 continue;
             }
 
             let columns = db.column_info(&table_state.table_name)?;
             let visible_columns = columns
                 .iter()
-                .map(|column| !table_state.hidden_columns.iter().any(|hidden| hidden == &column.name))
+                .map(|column| {
+                    !table_state
+                        .hidden_columns
+                        .iter()
+                        .any(|hidden| hidden == &column.name)
+                })
                 .collect::<Vec<_>>();
             let sort_clauses = table_state
                 .sort_rules
                 .iter()
                 .filter_map(|rule| {
-                    columns.iter().position(|column| column.name == rule.column_name).map(
-                        |column_index| SortRule {
+                    columns
+                        .iter()
+                        .position(|column| column.name == rule.column_name)
+                        .map(|column_index| SortRule {
                             column_index,
                             descending: rule.descending,
-                        },
-                    )
+                        })
                 })
                 .collect();
             let filter_rules = table_state
                 .filter_rules
                 .iter()
                 .filter_map(|rule| {
-                    columns.iter().position(|column| column.name == rule.column_name).map(
-                        |column_index| FilterRule {
+                    columns
+                        .iter()
+                        .position(|column| column.name == rule.column_name)
+                        .map(|column_index| FilterRule {
                             column_index,
                             mode: rule.mode,
                             value: rule.value.clone(),
-                        },
-                    )
+                        })
                 })
                 .collect();
 
@@ -853,11 +864,13 @@ impl App {
                 .filter_rules
                 .iter()
                 .filter_map(|rule| {
-                    columns.get(rule.column_index).map(|column| StoredFilterRule {
-                        column_name: column.name.clone(),
-                        mode: rule.mode,
-                        value: rule.value.clone(),
-                    })
+                    columns
+                        .get(rule.column_index)
+                        .map(|column| StoredFilterRule {
+                            column_name: column.name.clone(),
+                            mode: rule.mode,
+                            value: rule.value.clone(),
+                        })
                 })
                 .collect::<Vec<_>>();
 

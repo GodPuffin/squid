@@ -87,13 +87,22 @@ fn session_storage_round_trips_query_history_and_table_state() {
     assert_eq!(loaded.sql_focus, SqlPane::Results);
     assert_eq!(loaded.sql_history.len(), 1);
     assert_eq!(loaded.table_states.len(), 1);
-    assert_eq!(loaded.table_states[0].hidden_columns, vec!["email".to_string()]);
+    assert_eq!(
+        loaded.table_states[0].hidden_columns,
+        vec!["email".to_string()]
+    );
     assert_eq!(loaded.table_states[0].sort_rules[0].column_name, "name");
     assert!(loaded.table_states[0].sort_rules[0].descending);
-    assert_eq!(loaded.table_states[0].filter_rules[0].mode, FilterMode::IsTrue);
+    assert_eq!(
+        loaded.table_states[0].filter_rules[0].mode,
+        FilterMode::IsTrue
+    );
 
     let last_opened = AppStorage::last_opened_path_at(&storage).unwrap();
-    assert_eq!(last_opened, Some(normalize_database_path(&database).unwrap()));
+    assert_eq!(
+        last_opened,
+        Some(normalize_database_path(&database).unwrap())
+    );
 
     cleanup(&storage);
 }
