@@ -5,6 +5,14 @@ use crate::db::FilterMode;
 use super::{Action, App, FilterModalState, FilterPane, FilterRule};
 
 impl App {
+    pub fn filter_modal_click_column(&mut self, index: usize) -> Result<()> {
+        if let Some(modal) = &mut self.filter_modal {
+            modal.pane = FilterPane::Columns;
+            modal.column_index = index;
+        }
+        self.modal_toggle_column(index)
+    }
+
     pub fn filter_modal_select_column(&mut self, index: usize) {
         if let Some(modal) = &mut self.filter_modal {
             modal.pane = FilterPane::Columns;
