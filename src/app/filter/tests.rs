@@ -109,6 +109,23 @@ fn draft_space_only_inserts_for_input_modes() {
     assert_eq!(app.modal_filter_input(), "");
 }
 
+#[test]
+fn space_toggles_column_visibility_from_filter_modal_columns_pane() {
+    let mut app = app_with_filters("filter-column-toggle");
+
+    app.open_filter_modal();
+    app.handle_filter_modal(Action::ToggleItem).unwrap();
+    assert_eq!(app.visible_column_flags(), vec![false, true, true]);
+
+    app.filter_modal_select_column(1);
+    app.handle_filter_modal(Action::ToggleItem).unwrap();
+    assert_eq!(app.visible_column_flags(), vec![false, false, true]);
+
+    app.filter_modal_select_column(2);
+    app.handle_filter_modal(Action::ToggleItem).unwrap();
+    assert_eq!(app.visible_column_flags(), vec![false, false, true]);
+}
+
 fn seed_filter_rules(app: &mut App) {
     let selected = app.selected_table_name().unwrap().to_string();
     app.configs.insert(

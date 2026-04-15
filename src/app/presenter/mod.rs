@@ -72,7 +72,7 @@ impl App {
                 "Read-only row  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
             }
         } else if self.filter_modal.is_some() {
-            "Esc close  q close outside value input  Left/Right switch pane  Up/Down move  Type value  Enter apply  Delete remove  Space cycle operator".to_string()
+            "Esc close  q close outside value input  Left/Right switch pane  Up/Down move  Type value  Enter apply  Delete remove  Space toggle/cycle".to_string()
         } else if self.modal.is_some() {
             "Esc/q close  Left/Right switch pane  Space toggle  Enter add/update sort  Delete remove sort  c clear sorts  M filters".to_string()
         } else if let Some(search) = &self.search {
