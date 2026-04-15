@@ -15,10 +15,7 @@ use super::{
 
 impl App {
     pub fn load(path: impl Into<Option<PathBuf>>) -> Result<Self> {
-        let path = match path.into() {
-            Some(path) => Some(path),
-            None => AppStorage::last_opened_path().unwrap_or(None),
-        };
+        let path = path.into();
         let (recent_items, status_message) = match RecentStore::load() {
             Ok(items) => (items, None),
             Err(error) => (Vec::new(), Some(format!("Could not load recents: {error}"))),

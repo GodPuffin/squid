@@ -174,10 +174,7 @@ impl AppStorage {
         Ok(())
     }
 
-    pub fn last_opened_path() -> Result<Option<PathBuf>> {
-        Self::last_opened_path_at(&Self::storage_path()?)
-    }
-
+    #[cfg(test)]
     fn last_opened_path_at(storage_path: &Path) -> Result<Option<PathBuf>> {
         let conn = Self::open_at(storage_path)?;
         let bytes = conn
