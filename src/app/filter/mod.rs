@@ -10,6 +10,7 @@ impl App {
             modal.pane = FilterPane::Columns;
             modal.column_index = index;
         }
+        self.sync_filter_modal_draft();
         self.modal_toggle_column(index)
     }
 
