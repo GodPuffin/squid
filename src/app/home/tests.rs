@@ -2,117 +2,100 @@
 use std::os::unix::ffi::OsStringExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::app::{AppMode, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
+use crate::db::FilterMode;
+
 use super::{
-    RecentStore, normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available,
-    recent_paths_match,
+    AppStorage, StoredFilterRule, StoredSession, StoredSortRule, StoredTableState,
+    normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available, recent_paths_match,
 };
 
 #[test]
-fn load_from_path_ignores_blank_lines() {
-    let path = unique_test_path("load");
-    std::fs::write(&path, "\nC:\\db1.sqlite\n\nC:\\db2.sqlite\n").unwrap();
+fn recent_storage_round_trips_and_keeps_order() {
+    let storage = unique_test_path("recent-storage", "db");
+    let first = std::path::PathBuf::from("C:\\db1.sqlite");
+    let second = std::path::PathBuf::from("C:\\db2.sqlite");
 
-    let paths = RecentStore::load_from_path(&path).unwrap();
+    AppStorage::record_recent_at(&storage, &first).unwrap();
+    AppStorage::record_recent_at(&storage, &second).unwrap();
+    AppStorage::record_recent_at(&storage, &first).unwrap();
 
-    assert_eq!(paths.len(), 2);
-    cleanup(&path);
+    let loaded = AppStorage::load_recent_from_path(&storage, 10).unwrap();
+    let loaded_paths = loaded.into_iter().map(|item| item.path).collect::<Vec<_>>();
+
+    assert_eq!(loaded_paths, vec![first.clone(), second.clone()]);
+
+    AppStorage::remove_recent_at(&storage, &first).unwrap();
+    let after = AppStorage::load_recent_from_path(&storage, 10).unwrap();
+    let after_paths = after.into_iter().map(|item| item.path).collect::<Vec<_>>();
+    assert_eq!(after_paths, vec![second]);
+
+    cleanup(&storage);
 }
 
 #[test]
-fn load_from_path_reports_non_not_found_errors() {
-    let path = unique_test_path("load-dir");
-    std::fs::create_dir_all(&path).unwrap();
+fn session_storage_round_trips_query_history_and_table_state() {
+    let storage = unique_test_path("session-storage", "db");
+    let database = std::path::PathBuf::from("C:\\demo.sqlite");
+    let session = StoredSession {
+        mode: AppMode::Sql,
+        focus: PaneFocus::Content,
+        content_view: ContentView::Schema,
+        selected_table_name: Some("main.users".to_string()),
+        selected_row: 7,
+        selected_row_rowid: Some(41),
+        row_offset: 5,
+        schema_offset: 3,
+        sql_query: "select * from users".to_string(),
+        sql_cursor: 6,
+        sql_focus: SqlPane::Results,
+        sql_history: vec![SqlHistoryEntry {
+            query: "select 1".to_string(),
+            summary: "Returned 1 row(s)".to_string(),
+        }],
+        table_states: vec![StoredTableState {
+            table_name: "main.users".to_string(),
+            hidden_columns: vec!["email".to_string()],
+            sort_rules: vec![StoredSortRule {
+                column_name: "name".to_string(),
+                descending: true,
+            }],
+            filter_rules: vec![StoredFilterRule {
+                column_name: "active".to_string(),
+                mode: FilterMode::IsTrue,
+                value: String::new(),
+            }],
+        }],
+    };
 
-    let error = RecentStore::load_from_path(&path).unwrap_err();
+    AppStorage::save_session_at(&storage, &database, &session).unwrap();
 
-    assert!(
-        error
-            .to_string()
-            .contains("failed to read recent database list")
-    );
-    let _ = std::fs::remove_dir(&path);
-}
+    let loaded = AppStorage::load_session_at(&storage, &database)
+        .unwrap()
+        .expect("stored session");
 
-#[test]
-fn load_from_path_preserves_surrounding_whitespace() {
-    let path = unique_test_path("load-whitespace");
-    std::fs::write(&path, " report.db\nreport.db \n").unwrap();
+    assert_eq!(loaded.mode, AppMode::Sql);
+    assert_eq!(loaded.focus, PaneFocus::Content);
+    assert_eq!(loaded.content_view, ContentView::Schema);
+    assert_eq!(loaded.selected_table_name.as_deref(), Some("main.users"));
+    assert_eq!(loaded.selected_row, 7);
+    assert_eq!(loaded.selected_row_rowid, Some(41));
+    assert_eq!(loaded.row_offset, 5);
+    assert_eq!(loaded.schema_offset, 3);
+    assert_eq!(loaded.sql_query, "select * from users");
+    assert_eq!(loaded.sql_cursor, 6);
+    assert_eq!(loaded.sql_focus, SqlPane::Results);
+    assert_eq!(loaded.sql_history.len(), 1);
+    assert_eq!(loaded.table_states.len(), 1);
+    assert_eq!(loaded.table_states[0].hidden_columns, vec!["email".to_string()]);
+    assert_eq!(loaded.table_states[0].sort_rules[0].column_name, "name");
+    assert!(loaded.table_states[0].sort_rules[0].descending);
+    assert_eq!(loaded.table_states[0].filter_rules[0].mode, FilterMode::IsTrue);
 
-    let paths = RecentStore::load_from_path(&path).unwrap();
+    let last_opened = AppStorage::last_opened_path_at(&storage).unwrap();
+    assert_eq!(last_opened, Some(normalize_database_path(&database).unwrap()));
 
-    assert_eq!(
-        paths,
-        vec![
-            std::path::PathBuf::from(" report.db"),
-            std::path::PathBuf::from("report.db "),
-        ]
-    );
-    cleanup(&path);
-}
-
-#[test]
-fn save_and_remove_preserve_recent_order() {
-    let path = unique_test_path("save");
-    let entries = vec![
-        std::path::PathBuf::from("C:\\db1.sqlite"),
-        std::path::PathBuf::from("C:\\db2.sqlite"),
-    ];
-
-    RecentStore::save_to_path(&path, &entries).unwrap();
-    let loaded = RecentStore::load_from_path(&path).unwrap();
-    assert_eq!(loaded, entries);
-
-    let filtered = loaded
-        .into_iter()
-        .filter(|entry| entry != &std::path::PathBuf::from("C:\\db1.sqlite"))
-        .collect::<Vec<_>>();
-    RecentStore::save_to_path(&path, &filtered).unwrap();
-
-    let after = RecentStore::load_from_path(&path).unwrap();
-    assert_eq!(after, vec![std::path::PathBuf::from("C:\\db2.sqlite")]);
-    cleanup(&path);
-}
-
-#[test]
-fn save_and_load_preserve_newlines_in_paths() {
-    let path = unique_test_path("save-newline");
-    let entries = vec![std::path::PathBuf::from("report\n2026.db")];
-
-    RecentStore::save_to_path(&path, &entries).unwrap();
-
-    let loaded = RecentStore::load_from_path(&path).unwrap();
-    assert_eq!(loaded, entries);
-    cleanup(&path);
-}
-
-#[cfg(unix)]
-#[test]
-fn save_and_load_preserve_non_utf8_paths() {
-    let path = unique_test_path("save-nonutf8");
-    let entries = vec![std::path::PathBuf::from(std::ffi::OsString::from_vec(
-        vec![b'r', b'e', b'p', b'o', b'r', b't', 0xff, b'.', b'd', b'b'],
-    ))];
-
-    RecentStore::save_to_path(&path, &entries).unwrap();
-
-    let loaded = RecentStore::load_from_path(&path).unwrap();
-    assert_eq!(loaded, entries);
-    cleanup(&path);
-}
-
-#[test]
-fn record_logic_moves_existing_to_front_and_trims() {
-    let mut entries = (0..12)
-        .map(|index| std::path::PathBuf::from(format!("C:\\db{index}.sqlite")))
-        .collect::<Vec<_>>();
-    let target = std::path::PathBuf::from("C:\\db5.sqlite");
-
-    entries.retain(|entry| entry != &target);
-    entries.insert(0, target.clone());
-    entries.truncate(10);
-
-    assert_eq!(entries.first(), Some(&target));
-    assert_eq!(entries.len(), 10);
+    cleanup(&storage);
 }
 
 #[test]
@@ -239,12 +222,25 @@ fn normalize_database_path_preserves_memory_file_uris() {
     assert_eq!(normalize_database_path(path).unwrap(), path);
 }
 
-fn unique_test_path(label: &str) -> std::path::PathBuf {
+#[cfg(unix)]
+#[test]
+fn path_storage_round_trips_non_utf8_paths() {
+    let path = std::path::PathBuf::from(std::ffi::OsString::from_vec(vec![
+        b'r', b'e', b'p', b'o', b'r', b't', 0xff, b'.', b'd', b'b',
+    ]));
+
+    let bytes = super::path_to_storage_bytes(&path);
+    let decoded = super::path_from_storage_bytes(&bytes).unwrap();
+
+    assert_eq!(decoded, path);
+}
+
+fn unique_test_path(label: &str, extension: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("squid-{label}-{nanos}.txt"))
+    std::env::temp_dir().join(format!("squid-{label}-{nanos}.{extension}"))
 }
 
 fn cleanup(path: &std::path::Path) {

@@ -103,3 +103,9 @@ pub struct App {
     pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
 }
+
+impl Drop for App {
+    fn drop(&mut self) {
+        let _ = self.persist_session_state();
+    }
+}
