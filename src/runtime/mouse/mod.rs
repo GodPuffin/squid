@@ -177,7 +177,7 @@ pub fn handle_mouse_event(
             if !contains(filter_modal.area, column, row) {
                 app.handle(Action::CloseModal)?;
             } else if let Some(index) = ui::list_row_at(filter_modal.columns, column, row) {
-                app.filter_modal_select_column(index);
+                app.filter_modal_click_column(index)?;
             } else if let Some(index) = ui::list_row_at(filter_modal.modes, column, row) {
                 app.filter_modal_select_mode(index);
             } else if contains(filter_modal.draft, column, row) {
