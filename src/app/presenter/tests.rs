@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::app::{
-    App, FilterPane, FilterRule, ModalPane, ModalState, SearchScope, SearchState, SortRule,
-    TableConfig,
+    App, FilterPane, FilterRule, ModalPane, ModalState, RecentItem, SearchScope, SearchState,
+    SortRule, TableConfig,
 };
 use crate::db::FilterMode;
 
@@ -90,6 +90,32 @@ fn modal_and_filter_lines_render_empty_states() {
     app = app_with_presenter_data("presenter-lines");
     assert_eq!(app.modal_sort_active_lines(), vec!["No active sort"]);
     assert_eq!(app.modal_filter_active_lines(), vec!["No active filters"]);
+}
+
+#[test]
+fn home_recent_lines_lead_with_filename_for_long_paths() {
+    let mut app = App::load(None).unwrap();
+    let path = std::env::temp_dir()
+        .join("squid-presenter")
+        .join("nested")
+        .join("deeper")
+        .join("sakila.db");
+    app.recent_items = vec![
+        RecentItem {
+            path: path.clone(),
+            available: true,
+        },
+        RecentItem {
+            path,
+            available: false,
+        },
+    ];
+
+    let lines = app.home_recent_lines();
+    assert!(lines[0].starts_with("sakila.db"));
+    assert!(!lines[0].contains("[missing]"));
+    assert!(lines[1].starts_with("sakila.db"));
+    assert!(lines[1].ends_with("[missing]"));
 }
 
 #[test]

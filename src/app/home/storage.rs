@@ -483,7 +483,8 @@ impl AppStorage {
             })?;
         }
 
-        let conn = Connection::open(path)?;
+        let mut conn = Connection::open(path)?;
+        migrate_legacy_recent_storage(&mut conn)?;
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              CREATE TABLE IF NOT EXISTS app_meta(
@@ -578,6 +579,46 @@ impl AppStorage {
             Ok(base.join("squid").join("state.db"))
         }
     }
+}
+
+fn migrate_legacy_recent_storage(conn: &mut Connection) -> Result<()> {
+    let columns = {
+        let mut stmt = conn.prepare("PRAGMA table_info(recent_databases)")?;
+        stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)? != 0))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    if columns.is_empty() {
+        return Ok(());
+    }
+
+    let has_path = columns.iter().any(|(name, _)| name == "path");
+    let path_is_primary = columns
+        .iter()
+        .any(|(name, is_primary)| name == "path" && *is_primary);
+    if !has_path || path_is_primary {
+        return Ok(());
+    }
+
+    let tx = conn.transaction()?;
+    tx.execute_batch(
+        "DROP TABLE IF EXISTS recent_databases__migrated;
+         CREATE TABLE recent_databases__migrated(
+             path BLOB PRIMARY KEY,
+             last_opened_at INTEGER NOT NULL
+         );
+         INSERT INTO recent_databases__migrated(path, last_opened_at)
+         SELECT path, MAX(last_opened_at)
+         FROM recent_databases
+         GROUP BY path;
+         DROP TABLE recent_databases;
+         ALTER TABLE recent_databases__migrated RENAME TO recent_databases;",
+    )
+    .context("failed to migrate legacy recent database storage")?;
+    tx.commit()?;
+    Ok(())
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
