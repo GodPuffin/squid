@@ -7,7 +7,8 @@ use crate::db::FilterMode;
 
 use super::{
     AppStorage, StoredFilterRule, StoredSession, StoredSortRule, StoredTableState,
-    normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available, recent_paths_match,
+    normalize_database_path, path_to_sqlite_uri_path, recent_path_is_available, recent_path_label,
+    recent_paths_match,
 };
 
 #[test]
@@ -29,6 +30,58 @@ fn recent_storage_round_trips_and_keeps_order() {
     let after = AppStorage::load_recent_from_path(&storage, 10).unwrap();
     let after_paths = after.into_iter().map(|item| item.path).collect::<Vec<_>>();
     assert_eq!(after_paths, vec![second]);
+
+    cleanup(&storage);
+}
+
+#[test]
+fn legacy_recent_storage_migrates_when_recording_new_recents() {
+    let storage = unique_test_path("legacy-recent-storage", "db");
+    let legacy = unique_test_path("legacy-existing", "sqlite");
+    let fresh = unique_test_path("legacy-new", "sqlite");
+    let legacy_path = normalize_database_path(&legacy).unwrap();
+
+    let conn = rusqlite::Connection::open(&storage).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE recent_databases(
+             storage_key BLOB PRIMARY KEY,
+             path BLOB NOT NULL,
+             last_opened_at INTEGER NOT NULL
+         );",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO recent_databases(storage_key, path, last_opened_at)
+         VALUES (?1, ?2, ?3)",
+        rusqlite::params![
+            b"legacy-entry".to_vec(),
+            super::path_to_storage_bytes(&legacy_path),
+            1i64
+        ],
+    )
+    .unwrap();
+    drop(conn);
+
+    AppStorage::record_recent_at(&storage, &fresh).unwrap();
+
+    let loaded = AppStorage::load_recent_from_path(&storage, 10).unwrap();
+    let loaded_paths = loaded.into_iter().map(|item| item.path).collect::<Vec<_>>();
+    assert_eq!(
+        loaded_paths,
+        vec![normalize_database_path(&fresh).unwrap(), legacy_path]
+    );
+
+    let conn = rusqlite::Connection::open(&storage).unwrap();
+    let mut stmt = conn.prepare("PRAGMA table_info(recent_databases)").unwrap();
+    let columns = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)?))
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert!(columns.iter().any(|(name, pk)| name == "path" && *pk == 1));
+    assert!(!columns.iter().any(|(name, _)| name == "storage_key"));
 
     cleanup(&storage);
 }
@@ -225,6 +278,31 @@ fn recent_path_is_available_for_percent_encoded_file_uris() {
 }
 
 #[test]
+fn recent_path_label_leads_with_filename_for_local_paths_and_file_uris() {
+    let path = std::env::temp_dir()
+        .join("squid-recents")
+        .join(format!("sakila-{}.db", unique_suffix()));
+    let expected = format!(
+        "{}  [{}]",
+        path.file_name().unwrap().to_string_lossy(),
+        path.parent().unwrap().display()
+    );
+
+    assert_eq!(recent_path_label(&path), expected);
+
+    let uri = std::path::PathBuf::from(format!("file:{}?mode=ro", path_to_sqlite_uri_path(&path)));
+    assert_eq!(recent_path_label(&uri), expected);
+}
+
+#[test]
+fn recent_path_label_preserves_memory_databases() {
+    assert_eq!(
+        recent_path_label(std::path::Path::new(":memory:")),
+        ":memory:"
+    );
+}
+
+#[test]
 fn normalize_database_path_preserves_memory_file_uris() {
     let path = std::path::Path::new("file::memory:?cache=shared");
 
@@ -245,11 +323,16 @@ fn path_storage_round_trips_non_utf8_paths() {
 }
 
 fn unique_test_path(label: &str, extension: &str) -> std::path::PathBuf {
+    let nanos = unique_suffix();
+    std::env::temp_dir().join(format!("squid-{label}-{nanos}.{extension}"))
+}
+
+fn unique_suffix() -> u128 {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("squid-{label}-{nanos}.{extension}"))
+    nanos
 }
 
 fn cleanup(path: &std::path::Path) {

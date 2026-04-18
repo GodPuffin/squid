@@ -2,7 +2,7 @@ use sqlformat::{FormatOptions, QueryParams};
 
 use crate::db::FilterMode;
 
-use super::{App, AppMode, FilterPane, ModalPane, SearchScope};
+use super::{App, AppMode, FilterPane, ModalPane, SearchScope, home::recent_path_label};
 
 const HOME_LOGO: &str = concat!(
     " ▄▄▄▄▄▄▄   ▄▄▄▄▄   ▄▄▄  ▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄\n",
@@ -335,10 +335,12 @@ impl App {
             self.recent_items
                 .iter()
                 .map(|item| {
+                    let mut label = recent_path_label(&item.path);
                     if item.available {
-                        item.path.display().to_string()
+                        label
                     } else {
-                        format!("{} [missing]", item.path.display())
+                        label.push_str(" [missing]");
+                        label
                     }
                 })
                 .collect()

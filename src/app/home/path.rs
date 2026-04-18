@@ -76,6 +76,20 @@ pub(crate) fn recent_path_is_available(path: &Path) -> bool {
     path.is_file()
 }
 
+pub(crate) fn recent_path_label(path: &Path) -> String {
+    if preserves_sqlite_special_name(path) {
+        return path.display().to_string();
+    }
+
+    if path.to_str().is_some_and(|raw| raw.starts_with("file:")) {
+        return sqlite_uri_local_path(path)
+            .map(|local_path| local_recent_path_label(&local_path))
+            .unwrap_or_else(|| path.display().to_string());
+    }
+
+    local_recent_path_label(path)
+}
+
 #[cfg(test)]
 pub(crate) fn recent_paths_match(left: &Path, right: &Path) -> bool {
     match (recent_local_identity(left), recent_local_identity(right)) {
@@ -153,6 +167,22 @@ fn normalize_local_path(path: &Path) -> PathBuf {
     }
 
     normalized
+}
+
+fn local_recent_path_label(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| path.display().to_string());
+
+    match path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        Some(parent) => format!("{name}  [{}]", parent.display()),
+        None => name,
+    }
 }
 
 fn sqlite_uri_path_to_local_path(uri_path: &str) -> PathBuf {
