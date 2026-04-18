@@ -126,6 +126,31 @@ fn space_toggles_column_visibility_from_filter_modal_columns_pane() {
     assert_eq!(app.visible_column_flags(), vec![false, false, true]);
 }
 
+#[test]
+fn clicking_a_new_column_resyncs_filter_draft_for_that_column() {
+    let mut app = app_with_filters("filter-click-sync");
+
+    app.open_filter_modal();
+    app.filter_modal_select_column(0);
+    app.filter_modal_select_mode(2);
+    app.filter_modal_focus_draft();
+    app.filter_modal.as_mut().unwrap().input = "ali".to_string();
+
+    app.filter_modal_click_column(2).unwrap();
+
+    assert_eq!(app.active_filter_mode(), Some(FilterMode::IsTrue));
+    assert_eq!(app.modal_filter_input(), "");
+
+    app.handle_filter_modal(Action::Confirm).unwrap();
+    assert_eq!(
+        app.current_filter_rules()
+            .into_iter()
+            .map(|rule| (rule.column_index, rule.mode, rule.value))
+            .collect::<Vec<_>>(),
+        vec![(2, FilterMode::IsTrue, String::new())]
+    );
+}
+
 fn seed_filter_rules(app: &mut App) {
     let selected = app.selected_table_name().unwrap().to_string();
     app.configs.insert(

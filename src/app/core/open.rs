@@ -14,7 +14,14 @@ impl App {
         let absolute_path = normalize_database_path(path)?;
         let db = Database::open(&absolute_path)?;
         let tables = db.list_tables()?;
-        let stored_session = AppStorage::load_session(&absolute_path)?;
+        let mut warnings = Vec::new();
+        let stored_session = match AppStorage::load_session(&absolute_path) {
+            Ok(session) => session,
+            Err(error) => {
+                warnings.push(format!("could not restore session: {error}"));
+                None
+            }
+        };
 
         self.mode = AppMode::Browse;
         self.path = Some(absolute_path.clone());
@@ -45,11 +52,10 @@ impl App {
                         .unwrap_or(0);
                 }
             }
-            Err(error) => {
-                self.status_message = Some(format!(
-                    "Opened database but could not save recents: {error}"
-                ));
-            }
+            Err(error) => warnings.push(format!("could not save recents: {error}")),
+        }
+        if !warnings.is_empty() {
+            self.status_message = Some(format!("Opened database but {}", warnings.join("; ")));
         }
         Ok(())
     }

@@ -5,6 +5,8 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 #[cfg(windows)]
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -178,10 +180,7 @@ impl AppStorage {
         Ok(())
     }
 
-    pub fn last_opened_path() -> Result<Option<PathBuf>> {
-        Self::last_opened_path_at(&Self::storage_path()?)
-    }
-
+    #[cfg(test)]
     pub(crate) fn last_opened_path_at(storage_path: &Path) -> Result<Option<PathBuf>> {
         let conn = Self::open_at(storage_path)?;
         let bytes = conn
@@ -545,25 +544,54 @@ impl AppStorage {
     }
 
     fn storage_path() -> Result<PathBuf> {
-        let base = if cfg!(windows) {
-            env::var_os("APPDATA").map(PathBuf::from).or_else(|| {
-                env::var_os("USERPROFILE")
-                    .map(PathBuf::from)
-                    .map(|path| path.join("AppData\\Roaming"))
-            })
-        } else {
-            env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| {
-                    env::var_os("HOME")
-                        .map(PathBuf::from)
-                        .map(|path| path.join(".config"))
-                })
+        if let Some(path) = env_path("SQUID_STATE_DB") {
+            return Ok(path);
         }
-        .context("unable to determine config directory for app storage")?;
+        if let Some(path) = env_path("SQUID_CONFIG_DIR") {
+            return Ok(path.join("state.db"));
+        }
 
-        Ok(base.join("squid").join("state.db"))
+        #[cfg(test)]
+        {
+            Ok(test_storage_path())
+        }
+
+        #[cfg(not(test))]
+        {
+            let base = if cfg!(windows) {
+                env::var_os("APPDATA").map(PathBuf::from).or_else(|| {
+                    env::var_os("USERPROFILE")
+                        .map(PathBuf::from)
+                        .map(|path| path.join("AppData\\Roaming"))
+                })
+            } else {
+                env::var_os("XDG_CONFIG_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|| {
+                        env::var_os("HOME")
+                            .map(PathBuf::from)
+                            .map(|path| path.join(".config"))
+                    })
+            }
+            .context("unable to determine config directory for app storage")?;
+
+            Ok(base.join("squid").join("state.db"))
+        }
     }
+}
+
+fn env_path(name: &str) -> Option<PathBuf> {
+    let value = env::var_os(name)?;
+    if value.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(value))
+    }
+}
+
+#[cfg(test)]
+fn test_storage_path() -> PathBuf {
+    env::temp_dir().join(format!("squid-test-state-{}.db", process::id()))
 }
 
 #[cfg(unix)]

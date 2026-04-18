@@ -7,6 +7,14 @@ use rusqlite::Connection;
 use super::App;
 
 #[test]
+fn loading_without_path_starts_on_home_screen() {
+    let app = App::load(None::<PathBuf>).expect("load app");
+
+    assert!(app.is_home());
+    assert!(app.path().is_none());
+}
+
+#[test]
 fn refresh_loaded_db_state_preserves_selected_table_name() {
     let path = temp_db_path("refresh-selection");
     let conn = Connection::open(&path).expect("create db");

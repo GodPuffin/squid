@@ -175,6 +175,30 @@ fn modal_and_filter_clicks_update_selection() {
 }
 
 #[test]
+fn filter_modal_column_click_toggles_visibility() {
+    let mut app = app_with_mouse_data("mouse-filter-toggle");
+    app.handle(Action::OpenFilters).unwrap();
+    let layout = layout_info(Rect::new(0, 0, 80, 24), &app);
+    let columns = layout.filter_modal.as_ref().unwrap().columns;
+    let mut state = MouseState::default();
+
+    handle_mouse_event(
+        &mut app,
+        &layout,
+        mouse_down(columns.x + 1, columns.y + 1),
+        &mut state,
+        Instant::now(),
+    )
+    .unwrap();
+
+    assert_eq!(app.modal_column_lines(), vec!["[ ] name", "[x] age"]);
+    assert_eq!(
+        app.filter_modal_pane(),
+        Some(crate::app::FilterPane::Columns)
+    );
+}
+
+#[test]
 fn outside_click_closes_config_modal() {
     let mut app = app_with_mouse_data("mouse-modal-close");
     app.handle(Action::OpenConfig).unwrap();
