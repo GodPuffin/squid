@@ -13,8 +13,8 @@ use super::{
 #[test]
 fn recent_storage_round_trips_and_keeps_order() {
     let storage = unique_test_path("recent-storage", "db");
-    let first = std::path::PathBuf::from("C:\\db1.sqlite");
-    let second = std::path::PathBuf::from("C:\\db2.sqlite");
+    let first = unique_test_path("recent-first", "sqlite");
+    let second = unique_test_path("recent-second", "sqlite");
 
     AppStorage::record_recent_at(&storage, &first).unwrap();
     AppStorage::record_recent_at(&storage, &second).unwrap();
@@ -36,7 +36,7 @@ fn recent_storage_round_trips_and_keeps_order() {
 #[test]
 fn session_storage_round_trips_query_history_and_table_state() {
     let storage = unique_test_path("session-storage", "db");
-    let database = std::path::PathBuf::from("C:\\demo.sqlite");
+    let database = unique_test_path("session-demo", "sqlite");
     let session = StoredSession {
         mode: AppMode::Sql,
         focus: PaneFocus::Content,
