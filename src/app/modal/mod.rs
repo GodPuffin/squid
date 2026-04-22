@@ -187,7 +187,7 @@ impl App {
                     && let Some(rule) = config.sort_clauses.get_mut(index)
                 {
                     rule.descending = !rule.descending;
-                    self.refresh_preview()?;
+                    self.refresh_preview_page()?;
                 }
             }
         }
@@ -208,7 +208,7 @@ impl App {
                 return Ok(());
             }
             config.visible_columns[index] = !config.visible_columns[index];
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
         Ok(())
     }
@@ -234,7 +234,7 @@ impl App {
                     descending,
                 });
             }
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
 
         Ok(())
@@ -263,7 +263,7 @@ impl App {
         }
 
         if new_len.is_some() {
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
 
         Ok(())
@@ -285,7 +285,7 @@ impl App {
             if let Some(modal) = &mut self.modal {
                 modal.sort_active_index = 0;
             }
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
 
         Ok(())

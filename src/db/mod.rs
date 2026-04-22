@@ -4,7 +4,7 @@ mod schema;
 mod search;
 mod value;
 
-use std::path::Path;
+use std::{cell::RefCell, collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, MAIN_DB, OpenFlags};
@@ -85,6 +85,15 @@ pub struct ForeignKeyInfo {
 }
 
 #[derive(Debug, Clone)]
+struct CachedTableMetadata {
+    create_sql: Option<String>,
+    columns: Vec<ColumnInfo>,
+    column_names: Vec<String>,
+    foreign_keys: Vec<ForeignKeyInfo>,
+    rowid_alias: Option<&'static str>,
+}
+
+#[derive(Debug, Clone)]
 pub struct RowField {
     pub column_name: String,
     pub value: String,
@@ -125,6 +134,7 @@ impl RowPreview {
 
 pub struct Database {
     conn: Connection,
+    table_metadata_cache: RefCell<HashMap<String, Arc<CachedTableMetadata>>>,
 }
 
 impl Database {
@@ -142,7 +152,10 @@ impl Database {
                 })?
             }
         };
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            table_metadata_cache: RefCell::new(HashMap::new()),
+        })
     }
 
     pub fn table_is_writable(&self, table_name: &str) -> Result<bool> {

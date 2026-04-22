@@ -18,15 +18,46 @@ impl Database {
         limit: usize,
         offset: usize,
     ) -> Result<RowPreview> {
+        let total_rows = self.count_table_rows(table_name, filter_clauses)?;
+        self.preview_table_page(
+            table_name,
+            visible_columns,
+            sort_clauses,
+            filter_clauses,
+            limit,
+            offset,
+            total_rows,
+        )
+    }
+
+    pub fn count_table_rows(
+        &self,
+        table_name: &str,
+        filter_clauses: &[FilterClause],
+    ) -> Result<usize> {
+        let safe_table_name = quote_table_name(table_name);
+        let (where_clause, filter_params) = build_filter_where(filter_clauses);
+        count_rows(&self.conn, &safe_table_name, &where_clause, &filter_params)
+    }
+
+    pub fn preview_table_page(
+        &self,
+        table_name: &str,
+        visible_columns: &[String],
+        sort_clauses: &[SortClause],
+        filter_clauses: &[FilterClause],
+        limit: usize,
+        offset: usize,
+        total_rows: usize,
+    ) -> Result<RowPreview> {
         let rowid_alias = self.rowid_alias(table_name)?;
         let safe_table_name = quote_table_name(table_name);
         let columns = if visible_columns.is_empty() {
-            self.list_columns(table_name)?
+            self.table_metadata(table_name)?.column_names.clone()
         } else {
             visible_columns.to_vec()
         };
         let (where_clause, mut filter_params) = build_filter_where(filter_clauses);
-        let total_rows = count_rows(&self.conn, &safe_table_name, &where_clause, &filter_params)?;
         let select_list = columns
             .iter()
             .map(|column| quote_identifier(column))
@@ -387,7 +418,7 @@ pub(crate) fn build_order_by_or_rowid(sort_clauses: &[SortClause], rowid_alias: 
 
 impl Database {
     pub(crate) fn rowid_alias(&self, table_name: &str) -> Result<Option<&'static str>> {
-        Ok(rowid_alias_from_columns(&self.column_info(table_name)?))
+        Ok(self.table_metadata(table_name)?.rowid_alias)
     }
 }
 

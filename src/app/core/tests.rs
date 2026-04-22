@@ -111,6 +111,137 @@ fn reload_preserves_connection_scoped_tables() {
 }
 
 #[test]
+fn row_navigation_reuses_cached_row_count_until_reload() {
+    let path = temp_db_path("navigation-reuses-count");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute("INSERT INTO users(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.set_viewport_sizes(1, 20, 40, 10)
+        .expect("shrink viewport");
+    assert_eq!(app.preview.total_rows, 2);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("INSERT INTO users(name) VALUES ('gamma')", 10)
+        .expect("insert row");
+
+    app.move_row_selection_down().expect("move down one row");
+
+    assert_eq!(app.preview.total_rows, 2);
+
+    app.reload().expect("reload");
+
+    assert_eq!(app.preview.total_rows, 3);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn row_navigation_recovers_when_cached_row_count_is_too_high() {
+    let path = temp_db_path("navigation-shrink-count");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute("INSERT INTO users(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.set_viewport_sizes(1, 20, 40, 10)
+        .expect("shrink viewport");
+    assert_eq!(app.preview.total_rows, 2);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("DELETE FROM users WHERE id = 2", 10)
+        .expect("delete row");
+
+    app.move_row_selection_down().expect("move down one row");
+
+    assert_eq!(app.preview.total_rows, 1);
+    assert_eq!(app.selected_row, 0);
+    assert_eq!(app.row_offset, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn jump_to_row_offset_recounts_before_fetching_target_page() {
+    let path = temp_db_path("jump-recounts");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute("INSERT INTO users(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.set_viewport_sizes(1, 20, 40, 10)
+        .expect("shrink viewport");
+    assert_eq!(app.preview.total_rows, 2);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("INSERT INTO users(name) VALUES ('gamma')", 10)
+        .expect("insert row");
+
+    app.jump_to_row_offset(2).expect("jump to third row");
+
+    assert_eq!(app.preview.total_rows, 3);
+    assert_eq!(app.selected_row, 2);
+    assert_eq!(app.row_offset, 2);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn reload_clears_cached_table_metadata() {
+    let path = temp_db_path("reload-clears-metadata");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY)", [])
+        .expect("create users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    let columns = app
+        .details
+        .as_ref()
+        .expect("details loaded")
+        .columns
+        .iter()
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(columns, vec!["id"]);
+
+    let conn = Connection::open(&path).expect("reopen db");
+    conn.execute("ALTER TABLE users ADD COLUMN email TEXT", [])
+        .expect("alter users");
+    drop(conn);
+
+    app.reload().expect("reload");
+
+    let columns = app
+        .details
+        .as_ref()
+        .expect("details reloaded")
+        .columns
+        .iter()
+        .map(|column| column.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(columns, vec!["id", "email"]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn open_database_clears_sql_column_cache() {
     let first = temp_db_path("open-clears-cache-first");
     let second = temp_db_path("open-clears-cache-second");

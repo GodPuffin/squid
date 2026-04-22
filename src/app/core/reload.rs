@@ -24,6 +24,7 @@ impl App {
     pub(in crate::app) fn refresh_loaded_db_state(&mut self) -> Result<()> {
         let selected_table_name = self.selected_table_name().map(str::to_owned);
         let selected_table_index = self.selected_table;
+        self.db_ref()?.clear_caches();
         self.tables = self.db_ref()?.list_tables()?;
         self.sql.column_cache.clear();
         self.sql_invalidate_completion_cache();

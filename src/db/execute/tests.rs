@@ -77,6 +77,28 @@ fn execute_sql_writes_changes() {
 }
 
 #[test]
+fn execute_sql_invalidates_cached_table_metadata() {
+    let path = temp_db_path("invalidate-metadata");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY)", [])
+        .expect("create table");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    assert_eq!(db.list_columns("demo").expect("cached columns"), vec!["id"]);
+
+    db.execute_sql("ALTER TABLE demo ADD COLUMN name TEXT", 50)
+        .expect("alter table");
+
+    assert_eq!(
+        db.list_columns("demo").expect("reloaded columns"),
+        vec!["id", "name"]
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn open_read_only_database_allows_selects() {
     let path = temp_db_path("readonly-open");
     let conn = Connection::open(&path).expect("create db");

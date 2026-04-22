@@ -103,6 +103,9 @@ impl Database {
             if is_truncated {
                 rows.truncate(row_limit);
             }
+            if is_mutation {
+                self.clear_caches();
+            }
 
             Ok(SqlExecutionResult::Rows {
                 columns,
@@ -113,6 +116,7 @@ impl Database {
         } else {
             drop(stmt);
             let affected_rows = self.conn.execute(sql, [])?;
+            self.clear_caches();
             Ok(SqlExecutionResult::Statement {
                 affected_rows,
                 description: describe_statement(sql),
