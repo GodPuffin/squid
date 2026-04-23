@@ -13,7 +13,7 @@ mod table_config;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::db::{Database, RowPreview, TableDetails, TableSummary};
+use crate::db::{Database, DeferredSearchWork, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
 pub use state::{
@@ -96,6 +96,7 @@ pub struct App {
     pub filter_modal: Option<FilterModalState>,
     pub modal: Option<ModalState>,
     pub search: Option<SearchState>,
+    pub(crate) pending_search: Option<DeferredSearchWork>,
     pub search_results_view_width: usize,
     pub recent_items: Vec<RecentItem>,
     pub selected_recent: usize,

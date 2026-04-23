@@ -35,7 +35,7 @@ impl App {
         self.detail = None;
         self.filter_modal = None;
         self.modal = None;
-        self.search = None;
+        self.close_search();
         self.status_message = None;
         self.sql.column_cache.clear();
         self.sql_invalidate_completion_cache();
