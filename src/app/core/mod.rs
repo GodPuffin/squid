@@ -29,7 +29,7 @@ impl App {
             self.detail = None;
             self.modal = None;
             self.filter_modal = None;
-            self.search = None;
+            self.close_search();
             return Ok(());
         }
 

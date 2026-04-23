@@ -1,9 +1,15 @@
+use std::time::{Duration, Instant};
+
 use anyhow::Result;
 
 use super::{Action, App, SearchScope, SearchState};
 use crate::db::SearchHit;
 
 const CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS: usize = 2_000;
+const CURRENT_TABLE_SEARCH_RESULT_LIMIT: usize = 200;
+const ALL_TABLE_SEARCH_RESULT_LIMIT: usize = 300;
+const DEFERRED_SEARCH_BATCH_ROWS: usize = 128;
+const DEFERRED_SEARCH_TIME_SLICE: Duration = Duration::from_millis(8);
 const HORIZONTAL_SEARCH_SCROLL_STEP: usize = 8;
 const SEARCH_RESULTS_BLOCK_BORDER_WIDTH: usize = 2;
 const SEARCH_RESULTS_HIGHLIGHT_SYMBOL_WIDTH: usize = 3;
@@ -11,6 +17,7 @@ const SEARCH_RESULTS_HIGHLIGHT_SYMBOL_WIDTH: usize = 3;
 impl App {
     pub fn close_search(&mut self) {
         self.search = None;
+        self.pending_search = None;
     }
 
     pub fn select_search_result_in_view(&mut self, index: usize) {
@@ -90,6 +97,7 @@ impl App {
 
     pub(super) fn open_search(&mut self, scope: SearchScope) -> Result<()> {
         self.focus_content();
+        self.pending_search = None;
         let submitted =
             matches!(scope, SearchScope::CurrentTable) && self.current_table_search_is_live();
         self.search = Some(SearchState {
@@ -115,18 +123,17 @@ impl App {
         }) {
             self.refresh_search()?;
         } else if let Some(search) = &mut self.search {
+            self.pending_search = None;
             search.submitted = false;
             search.loading = false;
-            search.results.clear();
-            search.selected_result = 0;
-            search.result_offset = 0;
-            search.horizontal_offset = 0;
+            reset_search_results(search);
         }
 
         Ok(())
     }
 
     fn refresh_search(&mut self) -> Result<()> {
+        self.pending_search = None;
         let Some(search) = &self.search else {
             return Ok(());
         };
@@ -146,30 +153,18 @@ impl App {
                         &self.current_sort_clauses(),
                         &filter_clauses,
                         &query,
-                        200,
+                        CURRENT_TABLE_SEARCH_RESULT_LIMIT,
                     )?
                 } else {
                     Vec::new()
                 }
             }
-            SearchScope::AllTables => self.db_ref()?.search_tables(&self.tables, &query, 300)?,
-        };
-        if let Some(search) = &mut self.search {
-            search.results = results;
-            search.submitted = true;
-            search.loading = false;
-            if search.results.is_empty() {
-                search.selected_result = 0;
-                search.result_offset = 0;
-                search.horizontal_offset = 0;
-            } else {
-                search.selected_result = search
-                    .selected_result
-                    .min(search.results.len().saturating_sub(1));
-                self.clamp_search_viewport();
+            SearchScope::AllTables => {
+                self.db_ref()?
+                    .search_tables(&self.tables, &query, ALL_TABLE_SEARCH_RESULT_LIMIT)?
             }
-        }
-
+        };
+        self.apply_search_results(results);
         Ok(())
     }
 
@@ -177,22 +172,13 @@ impl App {
         let Some(search) = &self.search else {
             return Ok(());
         };
+        let submitted = search.submitted;
+        let loading = search.loading;
 
-        match search.scope {
-            SearchScope::CurrentTable => {
-                if search.submitted {
-                    self.jump_to_search_result()?;
-                } else {
-                    self.schedule_search_refresh();
-                }
-            }
-            SearchScope::AllTables => {
-                if search.submitted {
-                    self.jump_to_search_result()?;
-                } else {
-                    self.schedule_search_refresh();
-                }
-            }
+        if submitted {
+            self.jump_to_search_result()?;
+        } else if !loading {
+            self.schedule_search_refresh()?;
         }
 
         Ok(())
@@ -340,7 +326,7 @@ impl App {
         };
 
         if let Some(offset) = offset {
-            self.search = None;
+            self.close_search();
             self.jump_to_row_offset(offset)?;
         }
 
@@ -351,25 +337,115 @@ impl App {
         self.preview.total_rows <= CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS
     }
 
-    pub(crate) fn run_pending_work(&mut self) -> Result<bool> {
-        if self.search.as_ref().is_some_and(|search| search.loading) {
-            self.refresh_search()?;
-            return Ok(true);
-        }
-
-        Ok(false)
+    pub(crate) fn has_pending_work(&self) -> bool {
+        self.pending_search.is_some()
     }
 
-    fn schedule_search_refresh(&mut self) {
+    pub(crate) fn run_pending_work(&mut self) -> Result<bool> {
+        if self.pending_search.is_none() {
+            return Ok(false);
+        }
+
+        if self.search.is_none() {
+            self.pending_search = None;
+            return Ok(false);
+        }
+
+        let start = Instant::now();
+        let mut did_work = false;
+        while let Some(mut pending_search) = self.pending_search.take() {
+            if self.search.is_none() {
+                return Ok(did_work);
+            }
+
+            let completed = {
+                let db = self.db_ref()?;
+                pending_search.step(db, DEFERRED_SEARCH_BATCH_ROWS)?
+            };
+            did_work = true;
+
+            if completed {
+                self.apply_search_results(pending_search.into_results());
+            } else {
+                self.pending_search = Some(pending_search);
+            }
+
+            if self.pending_search.is_none() || start.elapsed() >= DEFERRED_SEARCH_TIME_SLICE {
+                break;
+            }
+        }
+
+        Ok(did_work)
+    }
+
+    fn schedule_search_refresh(&mut self) -> Result<()> {
+        let Some(search) = &self.search else {
+            return Ok(());
+        };
+
+        let scope = search.scope;
+        let query = search.query.clone();
+        let visible_columns = self.visible_column_names();
+        let sort_clauses = self.current_sort_clauses();
+        let filter_clauses = self.current_filter_clauses();
+        let current_table = self.selected_table_name().map(str::to_owned);
+        self.pending_search = match scope {
+            SearchScope::CurrentTable => {
+                if let Some(table_name) = current_table {
+                    self.db_ref()?.start_deferred_table_search(
+                        &table_name,
+                        &visible_columns,
+                        &sort_clauses,
+                        &filter_clauses,
+                        &query,
+                        CURRENT_TABLE_SEARCH_RESULT_LIMIT,
+                    )?
+                } else {
+                    None
+                }
+            }
+            SearchScope::AllTables => self.db_ref()?.start_deferred_all_tables_search(
+                &self.tables,
+                &query,
+                ALL_TABLE_SEARCH_RESULT_LIMIT,
+            )?,
+        };
+
         if let Some(search) = &mut self.search {
             search.loading = true;
             search.submitted = false;
-            search.results.clear();
-            search.selected_result = 0;
-            search.result_offset = 0;
-            search.horizontal_offset = 0;
+            reset_search_results(search);
+        }
+
+        if self.pending_search.is_none() {
+            self.apply_search_results(Vec::new());
+        }
+
+        Ok(())
+    }
+
+    fn apply_search_results(&mut self, results: Vec<SearchHit>) {
+        if let Some(search) = &mut self.search {
+            search.results = results;
+            search.submitted = true;
+            search.loading = false;
+            if search.results.is_empty() {
+                reset_search_results(search);
+            } else {
+                search.selected_result = search
+                    .selected_result
+                    .min(search.results.len().saturating_sub(1));
+                self.clamp_search_viewport();
+            }
         }
     }
+}
+
+fn reset_search_results(search: &mut SearchState) {
+    search.results.clear();
+    search.selected_result = 0;
+    search.result_offset = 0;
+    search.horizontal_offset = 0;
 }
 
 #[cfg(test)]
