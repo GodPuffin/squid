@@ -412,7 +412,7 @@ impl Database {
                 .join(", "),
             where_clause,
             order_by: build_order_by(sort_clauses),
-            rowid_alias: self.rowid_alias(table_name)?.map(str::to_owned),
+            rowid_alias: self.selectable_rowid_alias(table_name)?.map(str::to_owned),
             filter_params,
         }))
     }
@@ -431,12 +431,31 @@ impl Database {
                 .iter()
                 .map(|column| quote_identifier(column))
                 .collect::<Vec<_>>()
-                .join(", "),
+            .join(", "),
             where_clause: String::new(),
             order_by: String::new(),
-            rowid_alias: self.rowid_alias(table_name)?.map(str::to_owned),
+            rowid_alias: self.selectable_rowid_alias(table_name)?.map(str::to_owned),
             filter_params: Vec::new(),
         }))
+    }
+
+    fn selectable_rowid_alias(&self, table_name: &str) -> Result<Option<&'static str>> {
+        let Some(rowid_alias) = self.rowid_alias(table_name)? else {
+            return Ok(None);
+        };
+
+        let sql = format!(
+            "SELECT {rowid_alias}
+             FROM {safe_table_name}
+             LIMIT 1",
+            safe_table_name = quote_table_name(table_name)
+        );
+
+        if self.conn.prepare(&sql).is_ok() {
+            Ok(Some(rowid_alias))
+        } else {
+            Ok(None)
+        }
     }
 
     fn scan_search_rows_chunk(

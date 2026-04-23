@@ -171,6 +171,43 @@ fn search_tables_keeps_hits_when_rowid_aliases_are_shadowed() {
 }
 
 #[test]
+fn deferred_search_tables_handles_without_rowid_tables() {
+    let path = temp_db_path("search-deferred-without-rowid");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(name TEXT PRIMARY KEY) WITHOUT ROWID",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("insert row");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let mut deferred = db
+        .start_deferred_all_tables_search(
+            &[TableSummary {
+                name: "demo".to_string(),
+            }],
+            "alpha",
+            10,
+        )
+        .expect("start deferred search")
+        .expect("deferred work");
+
+    while !deferred.step(&db, 1).expect("run deferred step") {}
+
+    let results = deferred.into_results();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].table_name, "demo");
+    assert_eq!(results[0].values, vec!["alpha"]);
+    assert_eq!(results[0].rowid, None);
+    assert_eq!(results[0].row_label, "row 1");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn search_table_uses_integer_primary_key_named_rowid_even_when_other_aliases_are_shadowed() {
     let path = temp_db_path("search-explicit-rowid-primary-key");
     let conn = Connection::open(&path).expect("create db");
