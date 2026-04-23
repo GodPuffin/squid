@@ -47,58 +47,91 @@ impl App {
         self.ensure_sql_viewport();
 
         if needs_refresh {
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
 
         Ok(())
     }
 
     pub(in crate::app) fn refresh_preview(&mut self) -> Result<()> {
+        self.details = None;
+        self.refresh_preview_inner(true)
+    }
+
+    pub(in crate::app) fn refresh_preview_page(&mut self) -> Result<()> {
+        if self.details.is_none() {
+            return self.refresh_preview();
+        }
+
+        self.refresh_preview_inner(false)
+    }
+
+    fn refresh_preview_inner(&mut self, refresh_total_rows: bool) -> Result<()> {
         if self.is_home() {
             return Ok(());
         }
 
         if let Some(table_name) = self.selected_table_name().map(str::to_owned) {
-            let db = self.db_ref()?;
-            self.details = Some(db.table_details(&table_name)?);
-            self.ensure_table_config();
+            self.ensure_selected_table_details(&table_name)?;
 
-            let queried_offset = self.row_offset;
-            self.preview = self.db_ref()?.preview_table(
+            let visible_columns = self.visible_column_names();
+            let sort_clauses = self.current_sort_clauses();
+            let filter_clauses = self.current_filter_clauses();
+            let total_rows = if refresh_total_rows {
+                self.db_ref()?
+                    .count_table_rows(&table_name, &filter_clauses)?
+            } else {
+                self.details
+                    .as_ref()
+                    .map(|details| details.total_rows)
+                    .unwrap_or(self.preview.total_rows)
+            };
+
+            if let Some(details) = &mut self.details {
+                details.total_rows = total_rows;
+            }
+            self.preview.total_rows = total_rows;
+            self.clamp_row_viewport();
+            self.preview = self.db_ref()?.preview_table_page(
                 &table_name,
-                &self.visible_column_names(),
-                &self.current_sort_clauses(),
-                &self.current_filter_clauses(),
+                &visible_columns,
+                &sort_clauses,
+                &filter_clauses,
                 self.row_limit,
                 self.row_offset,
+                total_rows,
             )?;
-            if let Some(details) = &mut self.details {
-                details.total_rows = self.preview.total_rows;
-            }
-            self.clamp_row_viewport();
-            if self.row_offset != queried_offset {
-                self.preview = self.db_ref()?.preview_table(
-                    &table_name,
-                    &self.visible_column_names(),
-                    &self.current_sort_clauses(),
-                    &self.current_filter_clauses(),
-                    self.row_limit,
-                    self.row_offset,
-                )?;
+            let expected_rows = total_rows
+                .saturating_sub(self.row_offset)
+                .min(self.row_limit);
+            if !refresh_total_rows && self.preview.rows.len() != expected_rows {
+                return self.refresh_preview();
             }
             self.clamp_schema_offset();
         } else {
-            self.details = None;
-            self.preview = RowPreview::empty();
-            self.selected_row = 0;
-            self.row_offset = 0;
-            self.schema_offset = 0;
-            self.modal = None;
-            self.close_search();
-            self.detail = None;
+            self.clear_preview_state();
         }
 
         Ok(())
+    }
+
+    fn ensure_selected_table_details(&mut self, table_name: &str) -> Result<()> {
+        if self.details.is_none() {
+            self.details = Some(self.db_ref()?.table_details(table_name)?);
+        }
+        self.ensure_table_config();
+        Ok(())
+    }
+
+    fn clear_preview_state(&mut self) {
+        self.details = None;
+        self.preview = RowPreview::empty();
+        self.selected_row = 0;
+        self.row_offset = 0;
+        self.schema_offset = 0;
+        self.modal = None;
+        self.close_search();
+        self.detail = None;
     }
 
     pub(super) fn clamp_row_viewport(&mut self) {

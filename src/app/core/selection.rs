@@ -32,7 +32,7 @@ impl App {
             let previous_offset = self.row_offset;
             self.clamp_row_viewport();
             if previous_offset != self.row_offset {
-                self.refresh_preview()?;
+                self.refresh_preview_page()?;
             }
         }
         Ok(())
@@ -45,7 +45,7 @@ impl App {
             let previous_offset = self.row_offset;
             self.clamp_row_viewport();
             if previous_offset != self.row_offset {
-                self.refresh_preview()?;
+                self.refresh_preview_page()?;
             }
         }
         Ok(())

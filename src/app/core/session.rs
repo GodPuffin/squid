@@ -57,7 +57,7 @@ impl App {
         let queried_offset = self.row_offset;
         self.clamp_row_viewport();
         if self.row_offset != queried_offset {
-            self.refresh_preview()?;
+            self.refresh_preview_page()?;
         }
         self.clamp_schema_offset();
         self.ensure_sql_viewport();

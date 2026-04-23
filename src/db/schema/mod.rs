@@ -1,108 +1,145 @@
+use std::sync::Arc;
+
 use anyhow::{Context, Result, anyhow};
 use rusqlite::types::Value;
 use rusqlite::{Connection, params_from_iter};
 
-use super::{ColumnInfo, Database, ForeignKeyInfo, TableDetails};
-use crate::db::query::{quote_identifier, split_qualified_table_name};
+use super::{CachedTableMetadata, ColumnInfo, Database, ForeignKeyInfo, TableDetails};
+use crate::db::query::{quote_identifier, rowid_alias_from_columns, split_qualified_table_name};
 
 impl Database {
+    pub(super) fn table_metadata(&self, table_name: &str) -> Result<Arc<CachedTableMetadata>> {
+        if let Some(metadata) = self.table_metadata_cache.borrow().get(table_name).cloned() {
+            return Ok(metadata);
+        }
+
+        let metadata = Arc::new(load_table_metadata(&self.conn, table_name)?);
+        self.table_metadata_cache
+            .borrow_mut()
+            .insert(table_name.to_string(), Arc::clone(&metadata));
+        Ok(metadata)
+    }
+
+    pub(crate) fn clear_caches(&self) {
+        self.table_metadata_cache.borrow_mut().clear();
+    }
+
     pub fn table_details(&self, table_name: &str) -> Result<TableDetails> {
-        let columns = self.column_info(table_name)?;
-        let create_sql = if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
-            let master_table = schema_catalog_table(schema);
-            let sql = format!(
-                "SELECT sql
-                 FROM {master_table}
-                 WHERE type = 'table' AND name = ?1
-                 LIMIT 1"
-            );
-            self.conn
-                .query_row(&sql, [bare_name], |row| row.get::<_, Option<String>>(0))?
-        } else {
-            self.conn.query_row(
-                "SELECT sql
-                 FROM (
-                     SELECT sql, 0 AS priority
-                     FROM sqlite_temp_master
-                     WHERE type = 'table' AND name = ?1
-                     UNION ALL
-                     SELECT sql, 1 AS priority
-                     FROM sqlite_master
-                     WHERE type = 'table' AND name = ?1
-                 )
-                 ORDER BY priority
-                 LIMIT 1",
-                [table_name],
-                |row| row.get::<_, Option<String>>(0),
-            )?
-        };
+        let metadata = self.table_metadata(table_name)?;
 
         Ok(TableDetails {
-            create_sql,
-            columns,
+            create_sql: metadata.create_sql.clone(),
+            columns: metadata.columns.clone(),
             total_rows: 0,
         })
     }
 
     pub(crate) fn list_columns(&self, table_name: &str) -> Result<Vec<String>> {
-        let pragma = table_pragma_sql(table_name, "table_info");
-        let mut stmt = self.conn.prepare(&pragma)?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
-
-        let mut columns = Vec::new();
-        for row in rows {
-            columns.push(row?);
-        }
-
-        Ok(columns)
+        Ok(self.table_metadata(table_name)?.column_names.clone())
     }
 
     pub(crate) fn column_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>> {
-        let pragma = table_pragma_sql(table_name, "table_info");
-        let mut stmt = self.conn.prepare(&pragma)?;
-        let rows = stmt.query_map([], |row| {
-            let not_null = row.get::<_, i64>(3)? != 0;
-            let is_primary_key = row.get::<_, i64>(5)? != 0;
-            Ok(ColumnInfo {
-                name: row.get::<_, String>(1)?,
-                data_type: row.get::<_, String>(2)?,
-                not_null,
-                default_value: row.get::<_, Option<String>>(4)?,
-                is_primary_key,
-            })
-        })?;
-
-        let mut columns = Vec::new();
-        for row in rows {
-            columns.push(row?);
-        }
-
-        Ok(columns)
+        Ok(self.table_metadata(table_name)?.columns.clone())
     }
 
     pub(crate) fn foreign_key_info(&self, table_name: &str) -> Result<Vec<ForeignKeyInfo>> {
-        let pragma = table_pragma_sql(table_name, "foreign_key_list");
-        let source_schema = split_qualified_table_name(table_name).map(|(schema, _)| schema);
-        let mut stmt = self.conn.prepare(&pragma)?;
-        let rows = stmt.query_map([], |row| {
-            let target_table = row.get::<_, String>(2)?;
-            Ok(ForeignKeyInfo {
-                target_table: qualify_foreign_target_table(source_schema, &target_table),
-                from_column: row.get::<_, String>(3)?,
-                target_column: row.get::<_, String>(4)?,
-            })
-        })?;
-
-        let mut foreign_keys = Vec::new();
-        for row in rows {
-            let foreign_key = row?;
-            if !foreign_key.from_column.is_empty() && !foreign_key.target_column.is_empty() {
-                foreign_keys.push(foreign_key);
-            }
-        }
-
-        Ok(foreign_keys)
+        Ok(self.table_metadata(table_name)?.foreign_keys.clone())
     }
+}
+
+fn load_table_metadata(conn: &Connection, table_name: &str) -> Result<CachedTableMetadata> {
+    let columns = load_column_info(conn, table_name)?;
+    let column_names = columns
+        .iter()
+        .map(|column| column.name.clone())
+        .collect::<Vec<_>>();
+
+    Ok(CachedTableMetadata {
+        create_sql: load_table_create_sql(conn, table_name)?,
+        foreign_keys: load_foreign_key_info(conn, table_name)?,
+        rowid_alias: rowid_alias_from_columns(&columns),
+        columns,
+        column_names,
+    })
+}
+
+fn load_table_create_sql(conn: &Connection, table_name: &str) -> Result<Option<String>> {
+    if let Some((schema, bare_name)) = split_qualified_table_name(table_name) {
+        let master_table = schema_catalog_table(schema);
+        let sql = format!(
+            "SELECT sql
+             FROM {master_table}
+             WHERE type = 'table' AND name = ?1
+             LIMIT 1"
+        );
+        conn.query_row(&sql, [bare_name], |row| row.get::<_, Option<String>>(0))
+            .map_err(Into::into)
+    } else {
+        conn.query_row(
+            "SELECT sql
+             FROM (
+                 SELECT sql, 0 AS priority
+                 FROM sqlite_temp_master
+                 WHERE type = 'table' AND name = ?1
+                 UNION ALL
+                 SELECT sql, 1 AS priority
+                 FROM sqlite_master
+                 WHERE type = 'table' AND name = ?1
+             )
+             ORDER BY priority
+             LIMIT 1",
+            [table_name],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map_err(Into::into)
+    }
+}
+
+fn load_column_info(conn: &Connection, table_name: &str) -> Result<Vec<ColumnInfo>> {
+    let pragma = table_pragma_sql(table_name, "table_info");
+    let mut stmt = conn.prepare(&pragma)?;
+    let rows = stmt.query_map([], |row| {
+        let not_null = row.get::<_, i64>(3)? != 0;
+        let is_primary_key = row.get::<_, i64>(5)? != 0;
+        Ok(ColumnInfo {
+            name: row.get::<_, String>(1)?,
+            data_type: row.get::<_, String>(2)?,
+            not_null,
+            default_value: row.get::<_, Option<String>>(4)?,
+            is_primary_key,
+        })
+    })?;
+
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row?);
+    }
+
+    Ok(columns)
+}
+
+fn load_foreign_key_info(conn: &Connection, table_name: &str) -> Result<Vec<ForeignKeyInfo>> {
+    let pragma = table_pragma_sql(table_name, "foreign_key_list");
+    let source_schema = split_qualified_table_name(table_name).map(|(schema, _)| schema);
+    let mut stmt = conn.prepare(&pragma)?;
+    let rows = stmt.query_map([], |row| {
+        let target_table = row.get::<_, String>(2)?;
+        Ok(ForeignKeyInfo {
+            target_table: qualify_foreign_target_table(source_schema, &target_table),
+            from_column: row.get::<_, String>(3)?,
+            target_column: row.get::<_, String>(4)?,
+        })
+    })?;
+
+    let mut foreign_keys = Vec::new();
+    for row in rows {
+        let foreign_key = row?;
+        if !foreign_key.from_column.is_empty() && !foreign_key.target_column.is_empty() {
+            foreign_keys.push(foreign_key);
+        }
+    }
+
+    Ok(foreign_keys)
 }
 
 fn qualify_foreign_target_table(source_schema: Option<&str>, target_table: &str) -> String {
