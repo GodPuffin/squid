@@ -431,7 +431,7 @@ impl Database {
                 .iter()
                 .map(|column| quote_identifier(column))
                 .collect::<Vec<_>>()
-            .join(", "),
+                .join(", "),
             where_clause: String::new(),
             order_by: String::new(),
             rowid_alias: self.selectable_rowid_alias(table_name)?.map(str::to_owned),

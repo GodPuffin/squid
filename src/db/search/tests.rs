@@ -174,11 +174,8 @@ fn search_tables_keeps_hits_when_rowid_aliases_are_shadowed() {
 fn deferred_search_tables_handles_without_rowid_tables() {
     let path = temp_db_path("search-deferred-without-rowid");
     let conn = Connection::open(&path).expect("create db");
-    conn.execute(
-        "CREATE TABLE demo(name TEXT PRIMARY KEY) WITHOUT ROWID",
-        [],
-    )
-    .expect("create table");
+    conn.execute("CREATE TABLE demo(name TEXT PRIMARY KEY) WITHOUT ROWID", [])
+        .expect("create table");
     conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
         .expect("insert row");
     drop(conn);
