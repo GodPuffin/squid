@@ -241,6 +241,42 @@ fn refresh_preview_page_recounts_when_first_page_shrinks_but_is_not_empty() {
 }
 
 #[test]
+fn refresh_preview_page_recounts_when_first_page_grows_past_cached_total() {
+    let path = temp_db_path("first-page-grow-count");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute("INSERT INTO users(name) VALUES ('alpha')", [])
+        .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.set_viewport_sizes(10, 20, 40, 10)
+        .expect("expand viewport");
+    assert_eq!(app.preview.total_rows, 1);
+    assert_eq!(app.preview.rows.len(), 1);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("INSERT INTO users(name) VALUES ('beta'), ('gamma')", 10)
+        .expect("insert rows");
+
+    app.refresh_preview_page().expect("refresh page");
+
+    assert_eq!(app.preview.total_rows, 3);
+    assert_eq!(app.preview.rows.len(), 3);
+
+    app.move_row_selection_down().expect("move down one row");
+    app.move_row_selection_down().expect("move down two rows");
+
+    assert_eq!(app.selected_row, 2);
+    assert_eq!(app.selected_row_in_view(), Some(2));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn jump_to_row_offset_recounts_before_fetching_target_page() {
     let path = temp_db_path("jump-recounts");
     let conn = Connection::open(&path).expect("create db");

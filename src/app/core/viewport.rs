@@ -104,7 +104,7 @@ impl App {
             let expected_rows = total_rows
                 .saturating_sub(self.row_offset)
                 .min(self.row_limit);
-            if !refresh_total_rows && total_rows > 0 && self.preview.rows.len() < expected_rows {
+            if !refresh_total_rows && self.preview.rows.len() != expected_rows {
                 return self.refresh_preview();
             }
             self.clamp_schema_offset();
