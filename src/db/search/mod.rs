@@ -17,6 +17,85 @@ struct SearchScan<'a> {
     rowid_alias: Option<&'a str>,
 }
 
+#[derive(Debug, Clone)]
+struct SearchScanPlan {
+    table_name: String,
+    columns: Vec<String>,
+    safe_table_name: String,
+    select_list: String,
+    where_clause: String,
+    order_by: String,
+    rowid_alias: Option<String>,
+    filter_params: Vec<Value>,
+}
+
+#[derive(Debug, Clone)]
+struct ExactTableSearchPlan {
+    table_name: String,
+    scan: SearchScanPlan,
+}
+
+#[derive(Debug)]
+struct SearchRowBatch {
+    rows: Vec<SearchRowBatchRow>,
+    exhausted: bool,
+}
+
+#[derive(Debug)]
+struct SearchRowBatchRow {
+    rowid: Option<i64>,
+    values: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DeferredSearchCursor {
+    Offset(usize),
+    Rowid(Option<i64>),
+}
+
+#[derive(Debug)]
+pub(crate) struct DeferredCurrentTableSearch {
+    plan: SearchScanPlan,
+    query: String,
+    cursor: DeferredSearchCursor,
+    next_row_offset: usize,
+    results: Vec<SearchHit>,
+    limit: usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct DeferredAllTablesSearch {
+    tables: Vec<ExactTableSearchPlan>,
+    query_lower: String,
+    table_index: usize,
+    cursor: DeferredSearchCursor,
+    next_row_offset: usize,
+    results: Vec<SearchHit>,
+    limit: usize,
+}
+
+#[derive(Debug)]
+pub(crate) enum DeferredSearchWork {
+    CurrentTable(DeferredCurrentTableSearch),
+    AllTables(DeferredAllTablesSearch),
+}
+
+impl DeferredSearchWork {
+    pub(crate) fn step(&mut self, db: &Database, row_limit: usize) -> Result<bool> {
+        match self {
+            Self::CurrentTable(search) => search.step(db, row_limit),
+            Self::AllTables(search) => search.step(db, row_limit),
+        }
+    }
+
+    pub(crate) fn into_results(self) -> Vec<SearchHit> {
+        match self {
+            Self::CurrentTable(search) => search.results,
+            Self::AllTables(search) => search.results,
+        }
+    }
+}
+
 impl Database {
     pub fn search_table(
         &self,
@@ -31,36 +110,27 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let safe_table_name = quote_table_name(table_name);
-        let table_columns = self.list_columns(table_name)?;
-        let rowid_alias = self.rowid_alias(table_name)?;
-        let columns = if visible_columns.is_empty() {
-            table_columns.clone()
-        } else {
-            visible_columns.to_vec()
+        let Some(plan) = self.build_current_table_search_plan(
+            table_name,
+            visible_columns,
+            sort_clauses,
+            filter_clauses,
+        )?
+        else {
+            return Ok(Vec::new());
         };
 
-        if columns.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let select_list = columns
-            .iter()
-            .map(|column| quote_identifier(column))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let (where_clause, filter_params) = build_filter_where(filter_clauses);
-        let order_by = build_order_by(sort_clauses);
+        let columns = plan.columns.clone();
         let mut results = Vec::with_capacity(limit.min(SEARCH_RESULT_BUFFER));
         self.scan_search_rows(
             SearchScan {
-                safe_table_name: &safe_table_name,
-                select_list: &select_list,
-                where_clause: &where_clause,
-                order_by: &order_by,
-                rowid_alias,
+                safe_table_name: &plan.safe_table_name,
+                select_list: &plan.select_list,
+                where_clause: &plan.where_clause,
+                order_by: &plan.order_by,
+                rowid_alias: plan.rowid_alias.as_deref(),
             },
-            &filter_params,
+            &plan.filter_params,
             |index, rowid, values| {
                 let summary = render_search_summary(&columns, &values);
                 let preview = render_search_preview(&columns, &values);
@@ -86,7 +156,7 @@ impl Database {
                         .map(|rowid| format!("rowid {rowid}"))
                         .unwrap_or_else(|| format!("row {}", index + 1));
                     results.push(SearchHit {
-                        table_name: table_name.to_string(),
+                        table_name: plan.table_name.clone(),
                         rowid,
                         row_offset: index,
                         row_label,
@@ -139,27 +209,18 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let columns = self.list_columns(table_name)?;
-        if columns.is_empty() {
+        let Some(plan) = self.build_exact_table_search_plan(table_name)? else {
             return Ok(Vec::new());
-        }
-        let rowid_alias = self.rowid_alias(table_name)?;
-
-        let safe_table_name = quote_table_name(table_name);
-        let select_list = columns
-            .iter()
-            .map(|column| quote_identifier(column))
-            .collect::<Vec<_>>()
-            .join(", ");
+        };
         let query_lower = query.to_lowercase();
         let mut results = Vec::with_capacity(limit.min(SEARCH_RESULT_BUFFER));
         self.scan_search_rows(
             SearchScan {
-                safe_table_name: &safe_table_name,
-                select_list: &select_list,
-                where_clause: "",
-                order_by: "",
-                rowid_alias,
+                safe_table_name: &plan.safe_table_name,
+                select_list: &plan.select_list,
+                where_clause: &plan.where_clause,
+                order_by: &plan.order_by,
+                rowid_alias: plan.rowid_alias.as_deref(),
             },
             &[],
             |index, rowid, values| {
@@ -169,7 +230,7 @@ impl Database {
                         .map(|rowid| format!("rowid {rowid}"))
                         .unwrap_or_else(|| format!("row {}", index + 1));
                     results.push(SearchHit {
-                        table_name: table_name.to_string(),
+                        table_name: plan.table_name.clone(),
                         rowid,
                         row_offset: index,
                         row_label,
@@ -249,6 +310,445 @@ impl Database {
             index += 1;
         }
         Ok(())
+    }
+
+    pub(crate) fn start_deferred_table_search(
+        &self,
+        table_name: &str,
+        visible_columns: &[String],
+        sort_clauses: &[SortClause],
+        filter_clauses: &[FilterClause],
+        query: &str,
+        limit: usize,
+    ) -> Result<Option<DeferredSearchWork>> {
+        if query.trim().is_empty() || limit == 0 {
+            return Ok(None);
+        }
+
+        let Some(plan) = self.build_current_table_search_plan(
+            table_name,
+            visible_columns,
+            sort_clauses,
+            filter_clauses,
+        )?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(DeferredSearchWork::CurrentTable(
+            DeferredCurrentTableSearch {
+                cursor: deferred_current_table_cursor(&plan),
+                plan,
+                query: query.to_string(),
+                next_row_offset: 0,
+                results: Vec::with_capacity(limit.min(SEARCH_RESULT_BUFFER)),
+                limit,
+            },
+        )))
+    }
+
+    pub(crate) fn start_deferred_all_tables_search(
+        &self,
+        tables: &[TableSummary],
+        query: &str,
+        limit: usize,
+    ) -> Result<Option<DeferredSearchWork>> {
+        if query.trim().is_empty() || limit == 0 {
+            return Ok(None);
+        }
+
+        let mut table_plans = Vec::new();
+        for table in tables {
+            if let Some(plan) = self.build_exact_table_search_plan(&table.name)? {
+                table_plans.push(ExactTableSearchPlan {
+                    table_name: table.name.clone(),
+                    scan: plan,
+                });
+            }
+        }
+
+        Ok(Some(DeferredSearchWork::AllTables(
+            DeferredAllTablesSearch {
+                cursor: table_plans
+                    .first()
+                    .map(deferred_exact_table_cursor)
+                    .unwrap_or(DeferredSearchCursor::Offset(0)),
+                tables: table_plans,
+                query_lower: query.to_lowercase(),
+                table_index: 0,
+                next_row_offset: 0,
+                results: Vec::with_capacity(limit.min(SEARCH_RESULT_BUFFER)),
+                limit,
+            },
+        )))
+    }
+
+    fn build_current_table_search_plan(
+        &self,
+        table_name: &str,
+        visible_columns: &[String],
+        sort_clauses: &[SortClause],
+        filter_clauses: &[FilterClause],
+    ) -> Result<Option<SearchScanPlan>> {
+        let table_columns = self.list_columns(table_name)?;
+        let columns = if visible_columns.is_empty() {
+            table_columns
+        } else {
+            visible_columns.to_vec()
+        };
+        if columns.is_empty() {
+            return Ok(None);
+        }
+
+        let (where_clause, filter_params) = build_filter_where(filter_clauses);
+        Ok(Some(SearchScanPlan {
+            table_name: table_name.to_string(),
+            columns: columns.clone(),
+            safe_table_name: quote_table_name(table_name),
+            select_list: columns
+                .iter()
+                .map(|column| quote_identifier(column))
+                .collect::<Vec<_>>()
+                .join(", "),
+            where_clause,
+            order_by: build_order_by(sort_clauses),
+            rowid_alias: self.selectable_rowid_alias(table_name)?.map(str::to_owned),
+            filter_params,
+        }))
+    }
+
+    fn build_exact_table_search_plan(&self, table_name: &str) -> Result<Option<SearchScanPlan>> {
+        let columns = self.list_columns(table_name)?;
+        if columns.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(SearchScanPlan {
+            table_name: table_name.to_string(),
+            columns: columns.clone(),
+            safe_table_name: quote_table_name(table_name),
+            select_list: columns
+                .iter()
+                .map(|column| quote_identifier(column))
+                .collect::<Vec<_>>()
+                .join(", "),
+            where_clause: String::new(),
+            order_by: String::new(),
+            rowid_alias: self.selectable_rowid_alias(table_name)?.map(str::to_owned),
+            filter_params: Vec::new(),
+        }))
+    }
+
+    fn selectable_rowid_alias(&self, table_name: &str) -> Result<Option<&'static str>> {
+        let Some(rowid_alias) = self.rowid_alias(table_name)? else {
+            return Ok(None);
+        };
+
+        let sql = format!(
+            "SELECT {rowid_alias}
+             FROM {safe_table_name}
+             LIMIT 1",
+            safe_table_name = quote_table_name(table_name)
+        );
+
+        if self.conn.prepare(&sql).is_ok() {
+            Ok(Some(rowid_alias))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn scan_search_rows_chunk(
+        &self,
+        plan: &SearchScanPlan,
+        start_offset: usize,
+        row_limit: usize,
+    ) -> Result<SearchRowBatch> {
+        if row_limit == 0 {
+            return Ok(SearchRowBatch {
+                rows: Vec::new(),
+                exhausted: true,
+            });
+        }
+
+        let fetch_limit = row_limit.saturating_add(1);
+        if let Some(rowid_alias) = plan.rowid_alias.as_deref() {
+            let sql = format!(
+                "SELECT {rowid_alias}, {select_list}
+                 FROM {safe_table_name}
+                 {where_clause}
+                 {order_by}
+                 LIMIT {fetch_limit} OFFSET {start_offset}",
+                select_list = plan.select_list,
+                safe_table_name = plan.safe_table_name,
+                where_clause = plan.where_clause,
+                order_by = plan.order_by,
+            );
+            if let Ok(mut stmt) = self.conn.prepare(&sql) {
+                let column_count = stmt.column_count().saturating_sub(1);
+                let mut rows = stmt.query(params_from_iter(plan.filter_params.iter()))?;
+                let mut batch_rows = Vec::with_capacity(fetch_limit.min(row_limit));
+                while let Some(row) = rows.next()? {
+                    let rowid = row.get::<_, i64>(0)?;
+                    let mut values = Vec::with_capacity(column_count);
+                    for idx in 0..column_count {
+                        values.push(format_value(row.get_ref(idx + 1)?));
+                    }
+                    batch_rows.push(SearchRowBatchRow {
+                        rowid: Some(rowid),
+                        values,
+                    });
+                }
+                let exhausted = batch_rows.len() <= row_limit;
+                if !exhausted {
+                    batch_rows.truncate(row_limit);
+                }
+                return Ok(SearchRowBatch {
+                    rows: batch_rows,
+                    exhausted,
+                });
+            }
+        }
+
+        let sql = format!(
+            "SELECT {select_list}
+             FROM {safe_table_name}
+             {where_clause}
+             {order_by}
+             LIMIT {fetch_limit} OFFSET {start_offset}",
+            select_list = plan.select_list,
+            safe_table_name = plan.safe_table_name,
+            where_clause = plan.where_clause,
+            order_by = plan.order_by,
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let column_count = stmt.column_count();
+        let mut rows = stmt.query(params_from_iter(plan.filter_params.iter()))?;
+        let mut batch_rows = Vec::with_capacity(fetch_limit.min(row_limit));
+        while let Some(row) = rows.next()? {
+            let mut values = Vec::with_capacity(column_count);
+            for idx in 0..column_count {
+                values.push(format_value(row.get_ref(idx)?));
+            }
+            batch_rows.push(SearchRowBatchRow {
+                rowid: None,
+                values,
+            });
+        }
+        let exhausted = batch_rows.len() <= row_limit;
+        if !exhausted {
+            batch_rows.truncate(row_limit);
+        }
+        Ok(SearchRowBatch {
+            rows: batch_rows,
+            exhausted,
+        })
+    }
+
+    fn scan_search_rows_after_rowid(
+        &self,
+        plan: &SearchScanPlan,
+        after_rowid: Option<i64>,
+        row_limit: usize,
+    ) -> Result<SearchRowBatch> {
+        if row_limit == 0 {
+            return Ok(SearchRowBatch {
+                rows: Vec::new(),
+                exhausted: true,
+            });
+        }
+
+        let rowid_alias = plan
+            .rowid_alias
+            .as_deref()
+            .expect("rowid cursor requires a rowid alias");
+        let where_clause = match after_rowid {
+            Some(_) if plan.where_clause.is_empty() => format!("WHERE {rowid_alias} > ?"),
+            Some(_) => format!("{} AND {rowid_alias} > ?", plan.where_clause),
+            None => plan.where_clause.clone(),
+        };
+        let fetch_limit = row_limit.saturating_add(1);
+        let sql = format!(
+            "SELECT {rowid_alias}, {select_list}
+             FROM {safe_table_name}
+             {where_clause}
+             ORDER BY {rowid_alias} ASC
+             LIMIT {fetch_limit}",
+            select_list = plan.select_list,
+            safe_table_name = plan.safe_table_name,
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let column_count = stmt.column_count().saturating_sub(1);
+        let mut params = plan.filter_params.clone();
+        if let Some(after_rowid) = after_rowid {
+            params.push(Value::Integer(after_rowid));
+        }
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let mut batch_rows = Vec::with_capacity(fetch_limit.min(row_limit));
+        while let Some(row) = rows.next()? {
+            let rowid = row.get::<_, i64>(0)?;
+            let mut values = Vec::with_capacity(column_count);
+            for idx in 0..column_count {
+                values.push(format_value(row.get_ref(idx + 1)?));
+            }
+            batch_rows.push(SearchRowBatchRow {
+                rowid: Some(rowid),
+                values,
+            });
+        }
+        let exhausted = batch_rows.len() <= row_limit;
+        if !exhausted {
+            batch_rows.truncate(row_limit);
+        }
+        Ok(SearchRowBatch {
+            rows: batch_rows,
+            exhausted,
+        })
+    }
+}
+
+impl DeferredCurrentTableSearch {
+    fn step(&mut self, db: &Database, row_limit: usize) -> Result<bool> {
+        let batch = match self.cursor {
+            DeferredSearchCursor::Offset(offset) => {
+                db.scan_search_rows_chunk(&self.plan, offset, row_limit)?
+            }
+            DeferredSearchCursor::Rowid(after_rowid) => {
+                db.scan_search_rows_after_rowid(&self.plan, after_rowid, row_limit)?
+            }
+        };
+        for (index, row) in batch.rows.iter().enumerate() {
+            let row_offset = self.next_row_offset + index;
+            let summary = render_search_summary(&self.plan.columns, &row.values);
+            let preview = render_search_preview(&self.plan.columns, &row.values);
+            let summary_score = fuzzy_score(&summary, &self.query);
+            let column_scores = row
+                .values
+                .iter()
+                .map(|value| current_table_match_score(value, &self.query))
+                .collect::<Vec<_>>();
+            let matched_columns = column_scores
+                .iter()
+                .map(|score| score.is_some())
+                .collect::<Vec<_>>();
+            let score = column_scores
+                .iter()
+                .flatten()
+                .copied()
+                .max()
+                .into_iter()
+                .chain(summary_score)
+                .max();
+            if let Some(score) = score {
+                let row_label = row
+                    .rowid
+                    .map(|rowid| format!("rowid {rowid}"))
+                    .unwrap_or_else(|| format!("row {}", row_offset + 1));
+                self.results.push(SearchHit {
+                    table_name: self.plan.table_name.clone(),
+                    rowid: row.rowid,
+                    row_offset,
+                    row_label,
+                    values: row.values.clone(),
+                    matched_columns,
+                    haystack: preview,
+                    score,
+                });
+                trim_current_table_hits(&mut self.results, self.limit);
+            }
+        }
+
+        match &mut self.cursor {
+            DeferredSearchCursor::Offset(offset) => *offset += batch.rows.len(),
+            DeferredSearchCursor::Rowid(after_rowid) => {
+                *after_rowid = batch.rows.last().and_then(|row| row.rowid);
+            }
+        }
+        self.next_row_offset += batch.rows.len();
+        if batch.exhausted {
+            sort_current_table_hits(&mut self.results);
+            self.results.truncate(self.limit);
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+}
+
+impl DeferredAllTablesSearch {
+    fn step(&mut self, db: &Database, row_limit: usize) -> Result<bool> {
+        if self.table_index >= self.tables.len() {
+            sort_all_table_hits(&mut self.results);
+            self.results.truncate(self.limit);
+            return Ok(true);
+        }
+
+        let table = &self.tables[self.table_index];
+        let batch = match self.cursor {
+            DeferredSearchCursor::Offset(offset) => {
+                db.scan_search_rows_chunk(&table.scan, offset, row_limit)?
+            }
+            DeferredSearchCursor::Rowid(after_rowid) => {
+                db.scan_search_rows_after_rowid(&table.scan, after_rowid, row_limit)?
+            }
+        };
+        for (index, row) in batch.rows.iter().enumerate() {
+            let row_offset = self.next_row_offset + index;
+            let summary = row.values.join(" | ");
+            if let Some(score) = exact_match_score(&summary, &self.query_lower) {
+                let row_label = row
+                    .rowid
+                    .map(|rowid| format!("rowid {rowid}"))
+                    .unwrap_or_else(|| format!("row {}", row_offset + 1));
+                self.results.push(SearchHit {
+                    table_name: table.table_name.clone(),
+                    rowid: row.rowid,
+                    row_offset,
+                    row_label,
+                    values: row.values.clone(),
+                    matched_columns: Vec::new(),
+                    haystack: summary,
+                    score,
+                });
+                trim_all_table_hits(&mut self.results, self.limit);
+            }
+        }
+
+        match &mut self.cursor {
+            DeferredSearchCursor::Offset(offset) => *offset += batch.rows.len(),
+            DeferredSearchCursor::Rowid(after_rowid) => {
+                *after_rowid = batch.rows.last().and_then(|row| row.rowid);
+            }
+        }
+        self.next_row_offset += batch.rows.len();
+        if batch.exhausted {
+            self.table_index += 1;
+            self.next_row_offset = 0;
+            if self.table_index >= self.tables.len() {
+                sort_all_table_hits(&mut self.results);
+                self.results.truncate(self.limit);
+                return Ok(true);
+            }
+            self.cursor = deferred_exact_table_cursor(&self.tables[self.table_index]);
+        }
+
+        Ok(false)
+    }
+}
+
+fn deferred_current_table_cursor(plan: &SearchScanPlan) -> DeferredSearchCursor {
+    if plan.rowid_alias.is_some() && plan.order_by.is_empty() {
+        DeferredSearchCursor::Rowid(None)
+    } else {
+        DeferredSearchCursor::Offset(0)
+    }
+}
+
+fn deferred_exact_table_cursor(plan: &ExactTableSearchPlan) -> DeferredSearchCursor {
+    if plan.scan.rowid_alias.is_some() {
+        DeferredSearchCursor::Rowid(None)
+    } else {
+        DeferredSearchCursor::Offset(0)
     }
 }
 

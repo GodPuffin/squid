@@ -33,7 +33,7 @@ fn all_tables_search_starts_unsubmitted_and_confirm_runs_it() {
     assert!(app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().submitted);
 
-    assert!(app.run_pending_work().unwrap());
+    run_search_to_completion(&mut app);
     assert!(app.search.as_ref().unwrap().submitted);
     assert!(!app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().results.is_empty());
@@ -68,7 +68,7 @@ fn large_current_table_search_starts_unsubmitted_and_confirm_runs_it() {
     assert!(app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().submitted);
 
-    assert!(app.run_pending_work().unwrap());
+    run_search_to_completion(&mut app);
     assert!(app.search.as_ref().unwrap().submitted);
     assert!(!app.search.as_ref().unwrap().loading);
     assert!(!app.search.as_ref().unwrap().results.is_empty());
@@ -83,7 +83,7 @@ fn editing_all_tables_query_clears_stale_results() {
     app.open_search(SearchScope::AllTables).unwrap();
     app.search.as_mut().unwrap().query = "alice".to_string();
     app.handle_search(Action::Confirm).unwrap();
-    assert!(app.run_pending_work().unwrap());
+    run_search_to_completion(&mut app);
     assert!(app.search.as_ref().unwrap().submitted);
     app.search.as_mut().unwrap().horizontal_offset = 16;
 
@@ -93,6 +93,29 @@ fn editing_all_tables_query_clears_stale_results() {
     assert!(search.results.is_empty());
     assert_eq!(search.selected_result, 0);
     assert_eq!(search.horizontal_offset, 0);
+}
+
+#[test]
+fn editing_in_flight_deferred_search_cancels_pending_work() {
+    let mut app = app_with_search_data("search-stale-pending");
+
+    app.open_search(SearchScope::AllTables).unwrap();
+    app.search.as_mut().unwrap().query = "alice".to_string();
+    app.handle_search(Action::Confirm).unwrap();
+
+    assert!(app.search.as_ref().unwrap().loading);
+    assert!(app.pending_search.is_some());
+
+    app.handle_search(Action::InputChar('x')).unwrap();
+
+    let search = app.search.as_ref().unwrap();
+    assert_eq!(search.query, "alicex");
+    assert!(!search.loading);
+    assert!(!search.submitted);
+    assert!(search.results.is_empty());
+    assert!(app.pending_search.is_none());
+    assert!(!app.run_pending_work().unwrap());
+    assert!(app.search.as_ref().unwrap().results.is_empty());
 }
 
 #[test]
@@ -185,7 +208,7 @@ fn all_tables_search_can_jump_without_rowid_alias() {
     app.handle_search(Action::InputChar('v')).unwrap();
     app.handle_search(Action::InputChar('o')).unwrap();
     app.handle_search(Action::Confirm).unwrap();
-    assert!(app.run_pending_work().unwrap());
+    run_search_to_completion(&mut app);
     app.handle_search(Action::Confirm).unwrap();
 
     assert!(app.search.is_none());
@@ -317,4 +340,10 @@ fn temp_db_path(label: &str) -> PathBuf {
         .expect("clock")
         .as_nanos();
     std::env::temp_dir().join(format!("squid-search-{label}-{stamp}.sqlite"))
+}
+
+fn run_search_to_completion(app: &mut App) {
+    while app.has_pending_work() {
+        assert!(app.run_pending_work().expect("run pending search work"));
+    }
 }

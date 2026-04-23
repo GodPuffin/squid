@@ -94,7 +94,7 @@ impl App {
             self.row_offset = 0;
             self.schema_offset = 0;
             self.modal = None;
-            self.search = None;
+            self.close_search();
             self.detail = None;
         }
 

@@ -48,11 +48,16 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
         }
         terminal.draw(|frame| crate::ui::render(frame, &app))?;
 
-        if app.run_pending_work()? {
-            continue;
-        }
+        let ran_pending_work = app.run_pending_work()?;
+        let poll_timeout = if ran_pending_work && !app.has_pending_work() {
+            Duration::from_millis(0)
+        } else if app.has_pending_work() {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(200)
+        };
 
-        if !event::poll(Duration::from_millis(200))? {
+        if !event::poll(poll_timeout)? {
             continue;
         }
 
