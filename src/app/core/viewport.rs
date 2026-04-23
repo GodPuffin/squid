@@ -101,11 +101,10 @@ impl App {
                 self.row_offset,
                 total_rows,
             )?;
-            if !refresh_total_rows
-                && total_rows > 0
-                && self.row_offset > 0
-                && self.preview.rows.is_empty()
-            {
+            let expected_rows = total_rows
+                .saturating_sub(self.row_offset)
+                .min(self.row_limit);
+            if !refresh_total_rows && total_rows > 0 && self.preview.rows.len() < expected_rows {
                 return self.refresh_preview();
             }
             self.clamp_schema_offset();

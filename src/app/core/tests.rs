@@ -173,6 +173,74 @@ fn row_navigation_recovers_when_cached_row_count_is_too_high() {
 }
 
 #[test]
+fn refresh_preview_page_recovers_when_first_page_cached_row_count_is_too_high() {
+    let path = temp_db_path("first-page-shrink-count");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute("INSERT INTO users(name) VALUES ('alpha')", [])
+        .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    assert_eq!(app.preview.total_rows, 1);
+    assert_eq!(app.preview.rows.len(), 1);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("DELETE FROM users", 10)
+        .expect("delete rows");
+
+    app.refresh_preview_page().expect("refresh page");
+
+    assert_eq!(app.preview.total_rows, 0);
+    assert!(app.preview.rows.is_empty());
+    assert_eq!(app.selected_row, 0);
+    assert_eq!(app.row_offset, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn refresh_preview_page_recounts_when_first_page_shrinks_but_is_not_empty() {
+    let path = temp_db_path("first-page-partial-shrink-count");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create users");
+    conn.execute(
+        "INSERT INTO users(name) VALUES ('alpha'), ('beta'), ('gamma')",
+        [],
+    )
+    .expect("seed users");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.set_viewport_sizes(10, 20, 40, 10)
+        .expect("expand viewport");
+    app.move_row_selection_down().expect("move down one row");
+    app.move_row_selection_down().expect("move down two rows");
+    assert_eq!(app.selected_row, 2);
+    assert_eq!(app.preview.total_rows, 3);
+
+    app.db
+        .as_ref()
+        .expect("db loaded")
+        .execute_sql("DELETE FROM users WHERE id IN (2, 3)", 10)
+        .expect("delete rows");
+
+    app.refresh_preview_page().expect("refresh page");
+
+    assert_eq!(app.preview.total_rows, 1);
+    assert_eq!(app.preview.rows.len(), 1);
+    assert_eq!(app.selected_row, 0);
+    assert_eq!(app.row_offset, 0);
+    assert_eq!(app.selected_row_in_view(), Some(0));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn jump_to_row_offset_recounts_before_fetching_target_page() {
     let path = temp_db_path("jump-recounts");
     let conn = Connection::open(&path).expect("create db");
