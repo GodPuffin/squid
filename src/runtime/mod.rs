@@ -24,14 +24,15 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
 
     loop {
         let size = terminal.size()?;
-        let viewport = crate::ui::viewport_sizes(Rect::new(0, 0, size.width, size.height));
+        let area = Rect::new(0, 0, size.width, size.height);
+        let viewport = crate::ui::viewport_sizes(area);
         app.set_viewport_sizes(
             viewport.row_limit,
             viewport.schema_page_lines,
             viewport.detail_value_width,
             viewport.detail_value_height,
         )?;
-        let layout = crate::ui::layout_info(Rect::new(0, 0, size.width, size.height), &app);
+        let mut layout = crate::ui::layout_info(area, &app);
         app.sync_search_results_view_width(
             layout
                 .search_results
@@ -45,8 +46,9 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
                 sql.history.height.saturating_sub(2) as usize,
                 sql.results.height.saturating_sub(3) as usize,
             );
+            layout.refresh_view_dependent_rects(&app);
         }
-        terminal.draw(|frame| crate::ui::render(frame, &app))?;
+        terminal.draw(|frame| crate::ui::render(frame, &app, &layout))?;
 
         let ran_pending_work = app.run_pending_work()?;
         let poll_timeout = if ran_pending_work && !app.has_pending_work() {
