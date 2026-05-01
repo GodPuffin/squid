@@ -7,15 +7,18 @@ use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, T
 use crate::app::{App, PaneFocus, SearchScope};
 use crate::db::fuzzy_match_positions;
 
+use super::LayoutInfo;
 use super::modals::shared::selection_style;
 use super::widgets::panel_block;
-use super::{LayoutInfo, layout::search_layout};
 
 pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let Some(search) = &app.search else {
         return;
     };
-    let sections = search_layout(layout.content);
+    let (Some(search_box), Some(search_results)) = (layout.search_box, layout.search_results)
+    else {
+        return;
+    };
     let scope = match search.scope {
         SearchScope::CurrentTable => "Current Table",
         SearchScope::AllTables => "All Tables",
@@ -25,18 +28,18 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let query = Paragraph::new(search.query.as_str())
         .block(panel_block(&search_title, app.focus == PaneFocus::Content))
         .wrap(Wrap { trim: false });
-    frame.render_widget(query, sections[0]);
+    frame.render_widget(query, search_box);
 
     if search.loading {
         let loading = Paragraph::new(search_loading_message(search.scope))
             .block(panel_block("Results", app.focus == PaneFocus::Content))
             .wrap(Wrap { trim: false });
-        frame.render_widget(loading, sections[1]);
+        frame.render_widget(loading, search_results);
         return;
     }
 
     if matches!(search.scope, SearchScope::CurrentTable) {
-        render_current_table_search(frame, app, sections[1]);
+        render_current_table_search(frame, app, search_results);
         return;
     }
 
@@ -78,7 +81,7 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
     let mut state = ListState::default();
     state.select(app.search_selected_index_in_view());
-    frame.render_stateful_widget(list, sections[1], &mut state);
+    frame.render_stateful_widget(list, search_results, &mut state);
 }
 
 fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {

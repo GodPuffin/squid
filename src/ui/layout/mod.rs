@@ -23,6 +23,14 @@ pub struct LayoutInfo {
     pub modal: Option<ModalRects>,
 }
 
+impl LayoutInfo {
+    pub(crate) fn refresh_view_dependent_rects(&mut self, app: &App) {
+        if let Some(sql) = &mut self.sql {
+            sql.completion = sql_completion_for_app(sql.editor, app);
+        }
+    }
+}
+
 pub struct HeaderTabRects {
     pub browse: Rect,
     pub sql: Rect,
@@ -115,8 +123,9 @@ pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
     let body = if app.mode == AppMode::Browse {
         body_layout(areas[1], app.table_pane_width())
     } else {
-        vec![Rect::default(), areas[1]]
+        [Rect::default(), areas[1]]
     };
+    let search = app.search.as_ref().map(|_| search_layout(body[1]));
 
     LayoutInfo {
         header: areas[0],
@@ -124,24 +133,29 @@ pub fn layout_info(area: Rect, app: &App) -> LayoutInfo {
         tables: body[0],
         content: body[1],
         footer: areas[2],
-        search_box: app.search.as_ref().map(|_| search_layout(body[1])[0]),
-        search_results: app.search.as_ref().map(|_| search_layout(body[1])[1]),
+        search_box: search.map(|areas| areas[0]),
+        search_results: search.map(|areas| areas[1]),
         sql: (app.mode == AppMode::Sql).then(|| {
             let mut sql = sql_layout(body[1]);
-            if !app.sql_completion_items().is_empty() {
-                let (line, _) = app.sql_cursor_line_col();
-                sql.completion = Some(sql_completion_rect(
-                    sql.editor,
-                    line.saturating_sub(app.sql.editor_scroll),
-                    app.sql_cursor_screen_col(),
-                ));
-            }
+            sql.completion = sql_completion_for_app(sql.editor, app);
             sql
         }),
         detail: app.detail.as_ref().map(|_| detail_rects(area)),
         filter_modal: app.filter_modal.as_ref().map(|_| filter_modal_rects(area)),
         modal: app.modal.as_ref().map(|_| modal_rects(area)),
     }
+}
+
+fn sql_completion_for_app(editor_area: Rect, app: &App) -> Option<Rect> {
+    if app.sql_completion_items().is_empty() {
+        return None;
+    }
+    let (line, _) = app.sql_cursor_line_col();
+    Some(sql_completion_rect(
+        editor_area,
+        line.saturating_sub(app.sql.editor_scroll),
+        app.sql_cursor_screen_col(),
+    ))
 }
 
 struct HomeLayout {
@@ -219,7 +233,7 @@ pub fn table_row_at(area: Rect, column: u16, row: u16) -> Option<usize> {
     Some((row - area.y - 2) as usize)
 }
 
-pub fn root_layout(area: Rect) -> Vec<Rect> {
+pub fn root_layout(area: Rect) -> [Rect; 3] {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -227,24 +241,21 @@ pub fn root_layout(area: Rect) -> Vec<Rect> {
             Constraint::Min(10),
             Constraint::Length(2),
         ])
-        .split(area)
-        .to_vec()
+        .areas(area)
 }
 
-pub fn body_layout(area: Rect, tables_width: u16) -> Vec<Rect> {
+pub fn body_layout(area: Rect, tables_width: u16) -> [Rect; 2] {
     Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(tables_width), Constraint::Min(20)])
-        .split(area)
-        .to_vec()
+        .areas(area)
 }
 
-pub fn search_layout(area: Rect) -> Vec<Rect> {
+pub fn search_layout(area: Rect) -> [Rect; 2] {
     Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(6)])
-        .split(area)
-        .to_vec()
+        .areas(area)
 }
 
 pub fn sql_layout(area: Rect) -> SqlRects {
