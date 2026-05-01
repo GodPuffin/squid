@@ -1,4 +1,6 @@
 use sqlformat::{FormatOptions, QueryParams};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use crate::db::FilterMode;
 
@@ -15,6 +17,19 @@ const HOME_LOGO: &str = concat!(
 
 impl App {
     pub fn schema_lines(&self) -> Vec<String> {
+        let key = self.schema_cache_key();
+        if let Some((cached_key, cached_lines)) = self.schema_lines_cache.borrow().as_ref() {
+            if *cached_key == key {
+                return cached_lines.clone();
+            }
+        }
+
+        let lines = self.build_schema_lines();
+        *self.schema_lines_cache.borrow_mut() = Some((key, lines.clone()));
+        lines
+    }
+
+    fn build_schema_lines(&self) -> Vec<String> {
         if self.is_home() {
             return self.home_screen_lines();
         }
@@ -353,6 +368,27 @@ impl App {
 
     fn home_screen_lines(&self) -> Vec<String> {
         self.home_logo_lines()
+    }
+
+    pub(crate) fn schema_cache_key(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.is_home().hash(&mut hasher);
+        self.selected_table.hash(&mut hasher);
+        self.tables.len().hash(&mut hasher);
+        self.selected_table_label().hash(&mut hasher);
+        self.details.as_ref().map(|details| {
+            details.total_rows.hash(&mut hasher);
+            details.columns.len().hash(&mut hasher);
+            for column in &details.columns {
+                column.name.hash(&mut hasher);
+                column.data_type.hash(&mut hasher);
+                column.not_null.hash(&mut hasher);
+                column.is_primary_key.hash(&mut hasher);
+                column.default_value.hash(&mut hasher);
+            }
+            details.create_sql.hash(&mut hasher);
+        });
+        hasher.finish()
     }
 }
 

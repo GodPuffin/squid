@@ -11,6 +11,7 @@ mod state;
 mod table_config;
 
 use std::collections::HashMap;
+use std::cell::RefCell;
 use std::path::PathBuf;
 
 use crate::db::{Database, DeferredSearchWork, RowPreview, TableDetails, TableSummary};
@@ -103,6 +104,7 @@ pub struct App {
     pub status_message: Option<String>,
     pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
+    schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
 }
 
 impl Drop for App {
