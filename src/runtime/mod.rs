@@ -10,6 +10,7 @@ use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::{Action, App};
+use crate::ui::LayoutInfo;
 
 pub fn run(path: Option<PathBuf>) -> Result<()> {
     let mut terminal = terminal::setup_terminal()?;
@@ -23,32 +24,19 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
     let mut mouse_state = mouse::MouseState::default();
 
     loop {
-        let size = terminal.size()?;
-        let area = Rect::new(0, 0, size.width, size.height);
-        let viewport = crate::ui::viewport_sizes(area);
-        app.set_viewport_sizes(
-            viewport.row_limit,
-            viewport.schema_page_lines,
-            viewport.detail_value_width,
-            viewport.detail_value_height,
-        )?;
-        let mut layout = crate::ui::layout_info(area, &app);
-        app.sync_search_results_view_width(
-            layout
-                .search_results
-                .map(|area| area.width as usize)
-                .unwrap_or(0),
-        );
-        if let Some(sql) = &layout.sql {
-            app.set_sql_viewport_sizes(
-                sql.editor.height.saturating_sub(2) as usize,
-                sql.editor.width.saturating_sub(2) as usize,
-                sql.history.height.saturating_sub(2) as usize,
-                sql.results.height.saturating_sub(3) as usize,
-            );
-            layout.refresh_view_dependent_rects(&app);
+        let mut layout = None;
+        let mut layout_error = None;
+        terminal.draw(|frame| match layout_for_area(frame.area(), &mut app) {
+            Ok(frame_layout) => {
+                crate::ui::render(frame, &app, &frame_layout);
+                layout = Some(frame_layout);
+            }
+            Err(error) => layout_error = Some(error),
+        })?;
+        if let Some(error) = layout_error {
+            return Err(error);
         }
-        terminal.draw(|frame| crate::ui::render(frame, &app, &layout))?;
+        let layout = layout.expect("draw callback should build layout");
 
         let ran_pending_work = app.run_pending_work()?;
         let poll_timeout = if ran_pending_work && !app.has_pending_work() {
@@ -91,4 +79,32 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
     }
 
     Ok(())
+}
+
+fn layout_for_area(area: Rect, app: &mut App) -> Result<LayoutInfo> {
+    let viewport = crate::ui::viewport_sizes(area);
+    app.set_viewport_sizes(
+        viewport.row_limit,
+        viewport.schema_page_lines,
+        viewport.detail_value_width,
+        viewport.detail_value_height,
+    )?;
+    let mut layout = crate::ui::layout_info(area, app);
+    app.sync_search_results_view_width(
+        layout
+            .search_results
+            .map(|area| area.width as usize)
+            .unwrap_or(0),
+    );
+    if let Some(sql) = &layout.sql {
+        app.set_sql_viewport_sizes(
+            sql.editor.height.saturating_sub(2) as usize,
+            sql.editor.width.saturating_sub(2) as usize,
+            sql.history.height.saturating_sub(2) as usize,
+            sql.results.height.saturating_sub(3) as usize,
+        );
+        layout.refresh_view_dependent_rects(app);
+    }
+
+    Ok(layout)
 }
