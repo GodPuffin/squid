@@ -10,6 +10,7 @@ mod sql;
 mod state;
 mod table_config;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -103,6 +104,7 @@ pub struct App {
     pub status_message: Option<String>,
     pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
+    schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
 }
 
 impl Drop for App {

@@ -3,6 +3,7 @@ use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
+use std::sync::{Mutex, OnceLock};
 
 use crate::app::{App, ContentView, PaneFocus};
 
@@ -152,9 +153,20 @@ fn render_schema(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
-    let mut in_create_sql = false;
+    static CACHE: OnceLock<Mutex<Option<(u64, Vec<Line<'static>>)>>> = OnceLock::new();
+    let key = app.schema_cache_key();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some((cached_key, lines)) = guard.as_ref() {
+            if *cached_key == key {
+                return lines.clone();
+            }
+        }
+    }
 
-    app.schema_lines()
+    let mut in_create_sql = false;
+    let lines = app
+        .schema_lines()
         .into_iter()
         .map(|line| {
             if in_create_sql {
@@ -172,7 +184,13 @@ fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
 
             Line::from(line)
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((key, lines.clone()));
+    }
+
+    lines
 }
 
 #[cfg(test)]

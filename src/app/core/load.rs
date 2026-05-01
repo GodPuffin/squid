@@ -43,6 +43,7 @@ impl App {
             status_message,
             sql: default_sql_state(),
             configs: std::collections::HashMap::new(),
+            schema_lines_cache: std::cell::RefCell::new(None),
         };
 
         if let Some(path) = path.filter(|path| recent_path_is_available(path)) {
