@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use rusqlite::types::Value;
+
+use crate::db::ColumnInfo;
 
 use super::{
     Action, App, ContentView, DetailField, DetailForeignTarget, DetailMessage, DetailPane,
@@ -41,9 +45,22 @@ impl App {
     }
 
     pub fn detail_has_changes(&self) -> bool {
-        self.detail
-            .as_ref()
-            .is_some_and(|detail| detail.fields.iter().any(DetailField::is_dirty))
+        self.detail.as_ref().is_some_and(|detail| {
+            if detail.is_new_row {
+                detail
+                    .fields
+                    .iter()
+                    .any(|field| !field.draft_value.is_empty())
+            } else {
+                detail.fields.iter().any(DetailField::is_dirty)
+            }
+        })
+    }
+
+    pub fn can_add_new_row(&self) -> bool {
+        self.content_view == ContentView::Rows
+            && self.selected_table_name().is_some()
+            && self.detail_database_is_writable()
     }
 
     pub fn detail_database_is_writable(&self) -> bool {
@@ -57,11 +74,11 @@ impl App {
     }
 
     pub fn detail_is_row_writable(&self) -> bool {
-        self.detail
-            .as_ref()
-            .and_then(|detail| detail.rowid)
-            .is_some()
-            && self.detail_database_is_writable()
+        self.detail_database_is_writable()
+            && self
+                .detail
+                .as_ref()
+                .is_some_and(|detail| detail.is_new_row || detail.rowid.is_some())
     }
 
     pub fn detail_selected_field_is_editable(&self) -> bool {
@@ -92,6 +109,7 @@ impl App {
             Action::Backspace => self.detail_backspace(),
             Action::NewLine => self.detail_insert_newline(),
             Action::None
+            | Action::NewRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleView
@@ -187,6 +205,7 @@ impl App {
             .collect();
 
         self.detail = Some(DetailState {
+            is_new_row: false,
             rowid,
             row_label: record.row_label,
             pane: DetailPane::Fields,
@@ -206,6 +225,61 @@ impl App {
                 }),
                 (Some(_), true) => None,
             },
+            fields,
+        });
+
+        Ok(())
+    }
+
+    pub(super) fn open_new_row(&mut self) -> Result<()> {
+        if self.focus != super::PaneFocus::Content || self.content_view != ContentView::Rows {
+            return Ok(());
+        }
+        let Some(table_name) = self.selected_table_name().map(str::to_owned) else {
+            return Ok(());
+        };
+        if !self.db_ref()?.table_is_writable(&table_name)? {
+            self.status_message =
+                Some("Cannot add rows because this database is read-only".to_string());
+            return Ok(());
+        }
+
+        let column_info = self.db_ref()?.column_info(&table_name)?;
+        if column_info.is_empty() {
+            return Ok(());
+        }
+
+        let fields = column_info
+            .iter()
+            .map(|column| DetailField {
+                column_name: column.name.clone(),
+                data_type: column.data_type.clone(),
+                not_null: column.not_null,
+                original_value: String::new(),
+                draft_value: column
+                    .default_value
+                    .as_deref()
+                    .map(format_default_for_draft)
+                    .unwrap_or_default(),
+                foreign_target: None,
+                is_blob: column.data_type.to_ascii_uppercase().contains("BLOB"),
+            })
+            .collect();
+
+        self.detail = Some(DetailState {
+            is_new_row: true,
+            rowid: None,
+            row_label: "New row".to_string(),
+            pane: DetailPane::Fields,
+            selected_field: 0,
+            value_scroll: 0,
+            value_view_width: super::DEFAULT_DETAIL_VALUE_WIDTH,
+            value_view_height: super::DEFAULT_DETAIL_VALUE_HEIGHT,
+            is_editing: false,
+            message: Some(DetailMessage {
+                text: "Fill fields, then press s to insert".to_string(),
+                is_error: false,
+            }),
             fields,
         });
 
@@ -302,7 +376,7 @@ impl App {
             return;
         };
 
-        if detail.rowid.is_none() {
+        if detail.rowid.is_none() && !detail.is_new_row {
             detail.message = Some(DetailMessage {
                 text: "This row is read-only and cannot be edited".to_string(),
                 is_error: true,
@@ -404,18 +478,28 @@ impl App {
         let Some(table_name) = self.selected_table_name().map(str::to_owned) else {
             return Ok(());
         };
-        let Some(detail) = &self.detail else {
-            return Ok(());
-        };
+        let is_new_row = self.detail.as_ref().is_some_and(|detail| detail.is_new_row);
         if !self.detail_database_is_writable() {
             if let Some(detail) = &mut self.detail {
                 detail.message = Some(DetailMessage {
-                    text: "This row cannot be saved because the database is read-only".to_string(),
+                    text: if is_new_row {
+                        "This row cannot be inserted because the database is read-only".to_string()
+                    } else {
+                        "This row cannot be saved because the database is read-only".to_string()
+                    },
                     is_error: true,
                 });
             }
             return Ok(());
         }
+
+        if is_new_row {
+            return self.insert_new_row(&table_name);
+        }
+
+        let Some(detail) = &self.detail else {
+            return Ok(());
+        };
         let Some(rowid) = detail.rowid else {
             if let Some(detail) = &mut self.detail {
                 detail.message = Some(DetailMessage {
@@ -506,6 +590,92 @@ impl App {
         Ok(())
     }
 
+    fn insert_new_row(&mut self, table_name: &str) -> Result<()> {
+        let column_info = self.db_ref()?.column_info(table_name)?;
+        let fields = self
+            .detail
+            .as_ref()
+            .map(|detail| detail.fields.as_slice())
+            .unwrap_or_default();
+        let selected_field = self
+            .detail
+            .as_ref()
+            .map(|detail| detail.selected_field)
+            .unwrap_or(0);
+
+        let values = match collect_insert_values(fields, &column_info) {
+            Ok(values) => values,
+            Err(message) => {
+                if let Some(detail) = &mut self.detail {
+                    detail.message = Some(DetailMessage {
+                        text: message,
+                        is_error: true,
+                    });
+                }
+                return Ok(());
+            }
+        };
+        if values.is_empty() {
+            if let Some(detail) = &mut self.detail {
+                detail.is_editing = false;
+                detail.message = Some(DetailMessage {
+                    text: "No values to insert".to_string(),
+                    is_error: false,
+                });
+            }
+            return Ok(());
+        }
+
+        match self.db_ref()?.insert_row_values(table_name, &values) {
+            Ok(Some(inserted_rowid)) => {
+                let offset = self.db_ref()?.locate_row_offset(
+                    table_name,
+                    inserted_rowid,
+                    &self.current_sort_clauses(),
+                    &self.current_filter_clauses(),
+                )?;
+                if let Some(offset) = offset {
+                    self.jump_to_row_offset(offset)?;
+                    self.detail = None;
+                    self.open_detail()?;
+                    if let Some(detail) = &mut self.detail {
+                        detail.selected_field =
+                            selected_field.min(detail.fields.len().saturating_sub(1));
+                        detail.pane = DetailPane::Value;
+                        detail.is_editing = false;
+                        detail.message = Some(DetailMessage {
+                            text: format!("Inserted {} field(s)", values.len()),
+                            is_error: false,
+                        });
+                    }
+                    self.clamp_detail_scroll();
+                } else {
+                    self.detail = None;
+                    self.refresh_preview()?;
+                    self.status_message = Some(format!(
+                        "Inserted {} field(s); row no longer matches current view",
+                        values.len()
+                    ));
+                }
+            }
+            Ok(None) => {
+                self.detail = None;
+                self.refresh_preview()?;
+                self.status_message = Some(format!("Inserted {} field(s)", values.len()));
+            }
+            Err(err) => {
+                if let Some(detail) = &mut self.detail {
+                    detail.message = Some(DetailMessage {
+                        text: format!("Could not insert row: {err}"),
+                        is_error: true,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn follow_detail_link(&mut self) -> Result<()> {
         let target = self
             .detail
@@ -543,6 +713,11 @@ pub(crate) fn detail_value_text(detail: &DetailState, field: &DetailField) -> St
     if field.is_blob {
         lines.push("Blob values are displayed read-only.".to_string());
         lines.push(String::new());
+    } else if detail.is_new_row {
+        if detail.is_editing {
+            lines.push("Editing new row field".to_string());
+            lines.push(String::new());
+        }
     } else if detail.rowid.is_none() {
         lines.push("This row is read-only because rowid is unavailable.".to_string());
         lines.push(String::new());
@@ -640,6 +815,80 @@ fn parse_bool_value(column_name: &str, input: &str) -> Result<Value, String> {
         "0" | "false" | "f" | "no" | "n" | "off" => Ok(Value::Integer(0)),
         _ => Err(format!("{column_name} expects true/false or 1/0")),
     }
+}
+
+fn format_default_for_draft(default: &str) -> String {
+    let trimmed = default.trim();
+    if trimmed.len() >= 2
+        && ((trimmed.starts_with('\'') && trimmed.ends_with('\''))
+            || (trimmed.starts_with('"') && trimmed.ends_with('"')))
+    {
+        trimmed[1..trimmed.len() - 1].replace("''", "'")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn is_integer_primary_key(column: &ColumnInfo) -> bool {
+    column.is_primary_key && column.data_type.to_ascii_uppercase().contains("INT")
+}
+
+fn should_omit_insert_column(field: &DetailField, column: &ColumnInfo) -> bool {
+    if !field.draft_value.is_empty() {
+        return false;
+    }
+    if is_integer_primary_key(column) {
+        return true;
+    }
+    !field.not_null
+}
+
+fn collect_insert_values(
+    fields: &[DetailField],
+    columns: &[ColumnInfo],
+) -> Result<Vec<(String, Value)>, String> {
+    let column_by_name: HashMap<&str, &ColumnInfo> = columns
+        .iter()
+        .map(|column| (column.name.as_str(), column))
+        .collect();
+    let mut insert_values = Vec::new();
+
+    for field in fields {
+        if field.is_blob {
+            continue;
+        }
+        let Some(column) = column_by_name.get(field.column_name.as_str()) else {
+            continue;
+        };
+
+        if should_omit_insert_column(field, column) {
+            if field.not_null && column.default_value.is_none() {
+                return Err(format!("{} is required", field.column_name));
+            }
+            continue;
+        }
+
+        if field.draft_value.is_empty() && field.not_null {
+            return Err(format!("{} is required", field.column_name));
+        }
+
+        match parse_detail_value(field) {
+            Ok(value) => insert_values.push((field.column_name.clone(), value)),
+            Err(message) => return Err(message),
+        }
+    }
+
+    for column in columns {
+        if column.not_null
+            && column.default_value.is_none()
+            && !is_integer_primary_key(column)
+            && !insert_values.iter().any(|(name, _)| name == &column.name)
+        {
+            return Err(format!("{} is required", column.name));
+        }
+    }
+
+    Ok(insert_values)
 }
 
 #[cfg(test)]

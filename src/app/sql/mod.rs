@@ -226,7 +226,8 @@ impl App {
             | Action::FollowLink
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
-            | Action::OpenFilters => {}
+            | Action::OpenFilters
+            | Action::NewRow => {}
         }
 
         Ok(())

@@ -309,6 +309,92 @@ fn update_row_values_rejects_ambiguous_rowid_predicates() {
 }
 
 #[test]
+fn insert_row_values_inserts_row_and_returns_rowid() {
+    let path = temp_db_path("row-insert");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let inserted_rowid = db
+        .insert_row_values(
+            "demo",
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("gamma".to_string()),
+            )],
+        )
+        .expect("insert")
+        .expect("rowid");
+
+    assert_eq!(inserted_rowid, 1);
+
+    let verify = Connection::open(&path).expect("reopen");
+    let value = verify
+        .query_row("SELECT name FROM demo WHERE id = 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("select");
+    assert_eq!(value, "gamma");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn insert_row_values_omits_integer_primary_key_for_autoincrement() {
+    let path = temp_db_path("row-insert-autoincrement");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let inserted_rowid = db
+        .insert_row_values(
+            "demo",
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("delta".to_string()),
+            )],
+        )
+        .expect("insert")
+        .expect("rowid");
+
+    assert_eq!(inserted_rowid, 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn insert_row_values_rejects_read_only_databases() {
+    let path = temp_db_path("row-insert-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+    let err = db
+        .insert_row_values(
+            "demo",
+            &[(
+                "name".to_string(),
+                rusqlite::types::Value::Text("blocked".to_string()),
+            )],
+        )
+        .expect_err("read-only inserts should be rejected");
+
+    assert!(err.to_string().contains("read-only"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn update_row_values_rejects_read_only_databases() {
     let path = temp_db_path("row-update-readonly");
     let conn = Connection::open(&path).expect("create db");

@@ -161,6 +161,7 @@ impl DetailField {
 
 #[derive(Clone, Debug)]
 pub struct DetailState {
+    pub is_new_row: bool,
     pub rowid: Option<i64>,
     pub row_label: String,
     pub pane: DetailPane,

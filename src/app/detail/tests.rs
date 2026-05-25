@@ -476,6 +476,102 @@ fn detail_focus_value_keeps_existing_edit_mode() {
 }
 
 #[test]
+fn open_new_row_works_on_empty_table() {
+    let path = temp_db_path("detail-new-empty");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    assert_eq!(app.preview.total_rows, 0);
+
+    app.open_new_row().unwrap();
+    let detail = app.detail.as_ref().unwrap();
+    assert!(detail.is_new_row);
+    assert_eq!(detail.row_label, "New row");
+    assert!(
+        detail
+            .fields
+            .iter()
+            .any(|field| field.column_name == "label")
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn insert_new_row_from_detail_modal_persists_and_refreshes_preview() {
+    let path = temp_db_path("detail-insert");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_new_row().unwrap();
+
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "label")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.handle_detail(Action::EditDetail).unwrap();
+    app.handle_detail(Action::InputChar('h')).unwrap();
+    app.handle_detail(Action::InputChar('i')).unwrap();
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    assert!(app.preview.total_rows >= 1);
+    assert!(app.preview.rows.iter().flatten().any(|value| value == "hi"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn insert_new_row_reports_required_not_null_columns() {
+    let path = temp_db_path("detail-insert-required");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_new_row().unwrap();
+    app.handle_detail(Action::SaveDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    assert!(
+        detail
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("label is required")
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn wrapped_line_count_handles_empty_and_wrapped_values() {
     assert_eq!(super::wrapped_line_count("", 4), 1);
     assert_eq!(super::wrapped_line_count("abcdef", 4), 2);

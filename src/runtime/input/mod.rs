@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::{Action, App, AppMode, DetailPane, FilterPane, SqlPane};
+use crate::app::{Action, App, AppMode, ContentView, DetailPane, FilterPane, SqlPane};
 
 pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     if app.mode == AppMode::Sql {
@@ -19,7 +19,7 @@ pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     if app.modal.is_some() {
         return modal_action(key.code);
     }
-    root_action(key.code)
+    browse_action(app, key.code)
 }
 
 fn detail_action(app: &App, key: KeyCode) -> Action {
@@ -111,7 +111,7 @@ fn modal_action(key: KeyCode) -> Action {
     }
 }
 
-fn root_action(key: KeyCode) -> Action {
+fn browse_action(app: &App, key: KeyCode) -> Action {
     match key {
         KeyCode::Char('1') => Action::SwitchToBrowse,
         KeyCode::Char('2') => Action::SwitchToSql,
@@ -128,6 +128,9 @@ fn root_action(key: KeyCode) -> Action {
         KeyCode::Char('M') => Action::OpenFilters,
         KeyCode::Char('f') => Action::OpenSearchCurrent,
         KeyCode::Char('F') => Action::OpenSearchAll,
+        KeyCode::Char('a') if app.content_view == ContentView::Rows && app.can_add_new_row() => {
+            Action::NewRow
+        }
         KeyCode::Char(' ') => Action::ToggleItem,
         KeyCode::Enter => Action::Confirm,
         KeyCode::Delete | KeyCode::Backspace => Action::Delete,

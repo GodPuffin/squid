@@ -12,6 +12,16 @@ use crate::app::{
 };
 
 #[test]
+fn browse_rows_accepts_a_for_new_row_on_writable_table() {
+    let app = test_app("browse-new-row");
+
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('a'))),
+        Action::NewRow
+    );
+}
+
+#[test]
 fn root_digit_shortcuts_still_switch_modes() {
     let app = test_app("root-digit");
 
@@ -107,6 +117,7 @@ fn sql_editor_accepts_q_and_digits_as_text() {
 fn detail_modal_shortcuts_switch_between_edit_and_save_actions() {
     let mut app = test_app("detail-input");
     app.detail = Some(DetailState {
+        is_new_row: false,
         rowid: Some(1),
         row_label: "rowid 1".to_string(),
         pane: DetailPane::Value,
