@@ -42,6 +42,7 @@ fn detail_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('g') => Action::FollowLink,
         KeyCode::Char('e') => Action::EditDetail,
         KeyCode::Char('s') => Action::SaveDetail,
+        KeyCode::Char('d') if app.can_delete_detail_row() => Action::DeleteRow,
         KeyCode::Char('c') => Action::DiscardDetail,
         KeyCode::Enter
             if app.detail_selected_field_is_editable()
@@ -131,8 +132,16 @@ fn browse_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('a') if app.content_view == ContentView::Rows && app.can_add_new_row() => {
             Action::NewRow
         }
+        KeyCode::Char('d') if app.content_view == ContentView::Rows && app.can_delete_row() => {
+            Action::DeleteRow
+        }
         KeyCode::Char(' ') => Action::ToggleItem,
         KeyCode::Enter => Action::Confirm,
+        KeyCode::Delete | KeyCode::Backspace
+            if app.content_view == ContentView::Rows && app.can_delete_row() =>
+        {
+            Action::DeleteRow
+        }
         KeyCode::Delete | KeyCode::Backspace => Action::Delete,
         KeyCode::Char('c') => Action::Clear,
         KeyCode::Char('r') => Action::Reload,

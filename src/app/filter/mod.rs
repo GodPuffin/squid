@@ -75,6 +75,7 @@ impl App {
             Action::Backspace => self.filter_modal_backspace(),
             Action::None
             | Action::NewRow
+            | Action::DeleteRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleView

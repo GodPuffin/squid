@@ -63,6 +63,7 @@ pub enum Action {
     ToggleItem,
     Confirm,
     NewRow,
+    DeleteRow,
     FollowLink,
     EditDetail,
     SaveDetail,

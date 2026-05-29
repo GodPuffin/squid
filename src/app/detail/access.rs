@@ -51,6 +51,31 @@ impl App {
             && self.detail_database_is_writable()
     }
 
+    pub fn can_delete_row(&self) -> bool {
+        self.content_view == ContentView::Rows
+            && self.selected_table_name().is_some()
+            && self.preview.total_rows > 0
+            && self.table_has_rowid_alias()
+            && self.detail_database_is_writable()
+    }
+
+    pub fn can_delete_detail_row(&self) -> bool {
+        self.detail
+            .as_ref()
+            .is_some_and(|detail| !detail.is_new_row && detail.rowid.is_some())
+            && self.detail_database_is_writable()
+    }
+
+    fn table_has_rowid_alias(&self) -> bool {
+        self.selected_table_name()
+            .and_then(|table_name| {
+                self.db
+                    .as_ref()
+                    .and_then(|db| db.rowid_alias(table_name).ok().flatten())
+            })
+            .is_some()
+    }
+
     pub fn detail_database_is_writable(&self) -> bool {
         self.selected_table_name()
             .and_then(|table_name| {

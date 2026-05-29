@@ -73,6 +73,44 @@ fn browse_rows_accepts_a_for_new_row_on_writable_table() {
 }
 
 #[test]
+fn browse_rows_ignores_d_without_rows() {
+    let path = temp_db_path("browse-delete-empty");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let app = App::load(path.clone()).expect("load app");
+    assert!(!app.can_delete_row());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::None
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn browse_rows_accepts_d_for_delete_on_writable_table_with_rows() {
+    let path = temp_db_path("browse-delete");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let app = App::load(path.clone()).expect("load app");
+    assert!(app.can_delete_row());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::DeleteRow
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn root_digit_shortcuts_still_switch_modes() {
     let app = test_app("root-digit");
 
@@ -196,6 +234,10 @@ fn detail_modal_shortcuts_switch_between_edit_and_save_actions() {
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('s'))),
         Action::SaveDetail
+    );
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::DeleteRow
     );
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Enter)),
