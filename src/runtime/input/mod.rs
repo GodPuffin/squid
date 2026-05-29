@@ -44,8 +44,8 @@ fn detail_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('s') => Action::SaveDetail,
         KeyCode::Char('c') => Action::DiscardDetail,
         KeyCode::Enter
-            if app.detail_pane() == Some(DetailPane::Value)
-                && app.detail_selected_field_is_editable() =>
+            if app.detail_selected_field_is_editable()
+                && (app.detail_pane() == Some(DetailPane::Value) || app.detail_is_new_row()) =>
         {
             Action::EditDetail
         }

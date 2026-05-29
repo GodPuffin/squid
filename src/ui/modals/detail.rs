@@ -49,7 +49,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .map(|field| {
             let style = if field.is_blob {
                 Style::default().fg(Color::DarkGray)
-            } else if field.is_dirty() || (detail.is_new_row && !field.draft_value.is_empty()) {
+            } else if field.is_dirty() {
                 Style::default()
                     .fg(Color::LightGreen)
                     .add_modifier(Modifier::BOLD)
@@ -173,19 +173,11 @@ fn render_header_bar(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::styled(
             format!(
                 "{} pending {}",
-                if detail.is_new_row {
-                    detail
-                        .fields
-                        .iter()
-                        .filter(|field| !field.draft_value.is_empty())
-                        .count()
-                } else {
-                    detail
-                        .fields
-                        .iter()
-                        .filter(|field| field.is_dirty())
-                        .count()
-                },
+                detail
+                    .fields
+                    .iter()
+                    .filter(|field| field.is_dirty())
+                    .count(),
                 if detail.is_new_row {
                     "value(s)"
                 } else {
@@ -262,7 +254,7 @@ fn detail_value_content(app: &App) -> (Vec<Line<'static>>, String) {
     };
     if detail.is_editing {
         title.push_str(" [editing]");
-    } else if field.is_dirty() || (detail.is_new_row && !field.draft_value.is_empty()) {
+    } else if field.is_dirty() {
         title.push_str(if detail.is_new_row {
             " [set]"
         } else {

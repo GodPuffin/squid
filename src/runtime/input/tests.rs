@@ -12,6 +12,57 @@ use crate::app::{
 };
 
 #[test]
+fn browse_rows_ignores_a_on_read_only_table() {
+    let path = temp_db_path("browse-new-row-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let uri = PathBuf::from(format!("file:{}?mode=ro", path.display()));
+    let app = App::load(uri).expect("load app");
+
+    assert!(!app.can_add_new_row());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('a'))),
+        Action::None
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn detail_modal_enter_on_new_row_fields_pane_starts_editing() {
+    let mut app = test_app("detail-new-row-enter");
+    app.detail = Some(DetailState {
+        is_new_row: true,
+        rowid: None,
+        row_label: "New row".to_string(),
+        pane: DetailPane::Fields,
+        selected_field: 0,
+        value_scroll: 0,
+        value_view_width: 40,
+        value_view_height: 10,
+        is_editing: false,
+        message: None,
+        fields: vec![DetailField {
+            column_name: "name".to_string(),
+            data_type: "TEXT".to_string(),
+            not_null: true,
+            original_value: String::new(),
+            draft_value: String::new(),
+            foreign_target: None,
+            is_blob: false,
+        }],
+    });
+
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Enter)),
+        Action::EditDetail
+    );
+}
+
+#[test]
 fn browse_rows_accepts_a_for_new_row_on_writable_table() {
     let app = test_app("browse-new-row");
 

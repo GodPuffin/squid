@@ -36,16 +36,13 @@ impl App {
     }
 
     pub fn detail_has_changes(&self) -> bool {
-        self.detail.as_ref().is_some_and(|detail| {
-            if detail.is_new_row {
-                detail
-                    .fields
-                    .iter()
-                    .any(|field| !field.draft_value.is_empty())
-            } else {
-                detail.fields.iter().any(DetailField::is_dirty)
-            }
-        })
+        self.detail
+            .as_ref()
+            .is_some_and(|detail| detail.fields.iter().any(DetailField::is_dirty))
+    }
+
+    pub fn detail_is_new_row(&self) -> bool {
+        self.detail.as_ref().is_some_and(|detail| detail.is_new_row)
     }
 
     pub fn can_add_new_row(&self) -> bool {

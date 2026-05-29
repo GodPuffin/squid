@@ -476,6 +476,94 @@ fn detail_focus_value_keeps_existing_edit_mode() {
 }
 
 #[test]
+fn open_new_row_with_defaults_is_not_dirty_until_edited() {
+    let path = temp_db_path("detail-new-defaults");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(
+            id INTEGER PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'active'
+        )",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_new_row().unwrap();
+
+    assert!(!app.detail_has_changes());
+
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "status")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.handle_detail(Action::EditDetail).unwrap();
+    app.handle_detail(Action::InputChar('!')).unwrap();
+    assert!(app.detail_has_changes());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn discard_new_row_changes_restores_sql_defaults() {
+    let path = temp_db_path("detail-new-discard-defaults");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(
+            id INTEGER PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'active'
+        )",
+        [],
+    )
+    .expect("create table");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_new_row().unwrap();
+
+    let field_index = app
+        .detail
+        .as_ref()
+        .unwrap()
+        .fields
+        .iter()
+        .position(|field| field.column_name == "status")
+        .unwrap();
+    app.detail_select_field(field_index);
+    app.handle_detail(Action::EditDetail).unwrap();
+    for _ in "active".chars() {
+        app.handle_detail(Action::Backspace).unwrap();
+    }
+    for ch in "pending".chars() {
+        app.handle_detail(Action::InputChar(ch)).unwrap();
+    }
+    assert!(app.detail_has_changes());
+
+    app.handle_detail(Action::DiscardDetail).unwrap();
+
+    let detail = app.detail.as_ref().unwrap();
+    let field = detail
+        .fields
+        .iter()
+        .find(|field| field.column_name == "status")
+        .unwrap();
+    assert_eq!(field.draft_value, "active");
+    assert!(!app.detail_has_changes());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn open_new_row_works_on_empty_table() {
     let path = temp_db_path("detail-new-empty");
     let conn = Connection::open(&path).expect("create db");

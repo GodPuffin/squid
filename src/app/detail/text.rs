@@ -30,7 +30,7 @@ pub(crate) fn detail_value_text(detail: &DetailState, field: &DetailField) -> St
     ));
     lines.push(String::new());
 
-    if detail.is_new_row && (detail.is_editing || !field.draft_value.is_empty()) {
+    if detail.is_new_row && (detail.is_editing || field.is_dirty()) {
         lines.push("Draft".to_string());
         if field.draft_value.is_empty() {
             lines.push("<empty>".to_string());

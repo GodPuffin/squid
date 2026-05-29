@@ -129,18 +129,21 @@ impl App {
 
         let fields = column_info
             .iter()
-            .map(|column| DetailField {
-                column_name: column.name.clone(),
-                data_type: column.data_type.clone(),
-                not_null: column.not_null,
-                original_value: String::new(),
-                draft_value: column
+            .map(|column| {
+                let initial_value = column
                     .default_value
                     .as_deref()
                     .map(format_default_for_draft)
-                    .unwrap_or_default(),
-                foreign_target: None,
-                is_blob: column.data_type.to_ascii_uppercase().contains("BLOB"),
+                    .unwrap_or_default();
+                DetailField {
+                    column_name: column.name.clone(),
+                    data_type: column.data_type.clone(),
+                    not_null: column.not_null,
+                    original_value: initial_value.clone(),
+                    draft_value: initial_value,
+                    foreign_target: None,
+                    is_blob: column.data_type.to_ascii_uppercase().contains("BLOB"),
+                }
             })
             .collect();
 
