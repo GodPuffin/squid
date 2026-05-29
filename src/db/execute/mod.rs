@@ -8,6 +8,21 @@ use super::value::format_value;
 use super::{Database, SqlExecutionResult};
 
 impl Database {
+    fn run_insert_returning_rowid(&self, sql: &str, params: &[Value]) -> Result<i64> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let Some(row) = rows.next()? else {
+            bail!("refusing to insert: expected exactly one inserted row, inserted 0");
+        };
+        let inserted_rowid = row.get::<_, i64>(0)?;
+
+        if rows.next()?.is_some() {
+            bail!("refusing to insert: expected exactly one inserted row, inserted multiple");
+        }
+
+        Ok(inserted_rowid)
+    }
+
     fn run_update_row_values(&self, sql: &str, params: &[Value]) -> Result<i64> {
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows = stmt.query(params_from_iter(params.iter()))?;
@@ -68,6 +83,74 @@ impl Database {
                 self.run_update_row_values(&sql, &params)
             }
             Err(error) => Err(error),
+        }
+    }
+
+    pub fn insert_row_values(
+        &self,
+        table_name: &str,
+        values: &[(String, Value)],
+    ) -> Result<Option<i64>> {
+        if !self.table_is_writable(table_name)? {
+            bail!("row inserts are unavailable because this database is read-only");
+        }
+        if values.is_empty() {
+            bail!("refusing to insert: no column values were provided");
+        }
+
+        let quoted_table = quote_table_name(table_name);
+        let column_list = values
+            .iter()
+            .map(|(column_name, _)| quote_identifier(column_name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholders = std::iter::repeat_n("?", values.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let params = values
+            .iter()
+            .map(|(_, value)| value.clone())
+            .collect::<Vec<_>>();
+
+        if let Some(rowid_column) = self.rowid_alias(table_name)? {
+            let sql = format!(
+                "INSERT INTO {quoted_table} ({column_list}) VALUES ({placeholders}) RETURNING {rowid_column}"
+            );
+            match self.run_insert_returning_rowid(&sql, &params) {
+                Ok(inserted_rowid) => {
+                    self.clear_caches();
+                    Ok(Some(inserted_rowid))
+                }
+                Err(error)
+                    if error
+                        .downcast_ref::<SqlError>()
+                        .is_some_and(is_readonly_write_error)
+                        && !self.conn.is_readonly(MAIN_DB)? =>
+                {
+                    self.conn.pragma_update(None, "journal_mode", "MEMORY")?;
+                    let inserted_rowid = self.run_insert_returning_rowid(&sql, &params)?;
+                    self.clear_caches();
+                    Ok(Some(inserted_rowid))
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            let sql = format!("INSERT INTO {quoted_table} ({column_list}) VALUES ({placeholders})");
+            match self.conn.execute(&sql, params_from_iter(params.iter())) {
+                Ok(_) => {
+                    self.clear_caches();
+                    Ok(None)
+                }
+                Err(error)
+                    if is_readonly_write_error(&error) && !self.conn.is_readonly(MAIN_DB)? =>
+                {
+                    self.conn.pragma_update(None, "journal_mode", "MEMORY")?;
+                    self.conn.execute(&sql, params_from_iter(params.iter()))?;
+                    self.clear_caches();
+                    Ok(None)
+                }
+                Err(error) => Err(error.into()),
+            }
         }
     }
 

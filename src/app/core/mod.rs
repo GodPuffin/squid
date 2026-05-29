@@ -67,6 +67,7 @@ impl App {
             Action::OpenSearchCurrent => self.open_search(super::SearchScope::CurrentTable)?,
             Action::OpenSearchAll => self.open_search(super::SearchScope::AllTables)?,
             Action::Confirm => self.open_detail()?,
+            Action::NewRow => self.open_new_row()?,
             Action::CloseModal
             | Action::ToggleItem
             | Action::FollowLink
@@ -272,7 +273,8 @@ impl App {
             | Action::NewLine
             | Action::InputChar(_)
             | Action::Backspace
-            | Action::FollowLink => {}
+            | Action::FollowLink
+            | Action::NewRow => {}
         }
 
         Ok(())

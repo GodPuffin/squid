@@ -62,6 +62,7 @@ pub enum Action {
     CloseModal,
     ToggleItem,
     Confirm,
+    NewRow,
     FollowLink,
     EditDetail,
     SaveDetail,

@@ -74,6 +74,7 @@ impl App {
             Action::InputChar(ch) => self.filter_modal_input_char(ch),
             Action::Backspace => self.filter_modal_backspace(),
             Action::None
+            | Action::NewRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleView

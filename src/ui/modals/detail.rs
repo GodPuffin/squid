@@ -26,10 +26,15 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         return;
     };
 
+    let modal_title = if detail.is_new_row {
+        "New Row"
+    } else {
+        "Row Details"
+    };
     render_shell(
         frame,
         detail_layout.area,
-        "Row Details",
+        modal_title,
         "",
         "",
         detail_layout.header,
@@ -167,12 +172,17 @@ fn render_header_bar(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             format!(
-                "{} pending edit(s)",
+                "{} pending {}",
                 detail
                     .fields
                     .iter()
                     .filter(|field| field.is_dirty())
-                    .count()
+                    .count(),
+                if detail.is_new_row {
+                    "value(s)"
+                } else {
+                    "edit(s)"
+                }
             ),
             Style::default()
                 .fg(Color::LightYellow)
@@ -197,14 +207,19 @@ fn render_header_bar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_footer_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let is_new_row = app.detail.as_ref().is_some_and(|detail| detail.is_new_row);
     let text = if app.detail_has_changes() {
         if app.detail_is_editing() {
             "Type to edit  Enter newline  Backspace delete  Esc stop editing"
+        } else if is_new_row {
+            "e edit field  s insert row  c discard  Up/Down field  Left/Right pane"
         } else {
             "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key"
         }
     } else if app.detail_is_editing() {
         "Type to edit  Enter newline  Backspace delete  Esc stop editing"
+    } else if is_new_row {
+        "e edit field  Enter edit focused value  s insert row  Up/Down field  Left/Right pane"
     } else if app.detail_is_row_writable() {
         "e edit field  Enter edit focused value  Up/Down field  Left/Right pane  g follow foreign key"
     } else {
@@ -240,8 +255,12 @@ fn detail_value_content(app: &App) -> (Vec<Line<'static>>, String) {
     if detail.is_editing {
         title.push_str(" [editing]");
     } else if field.is_dirty() {
-        title.push_str(" [edited]");
-    } else if field.is_blob || detail.rowid.is_none() {
+        title.push_str(if detail.is_new_row {
+            " [set]"
+        } else {
+            " [edited]"
+        });
+    } else if field.is_blob || (detail.rowid.is_none() && !detail.is_new_row) {
         title.push_str(" [read-only]");
     }
 
@@ -265,7 +284,7 @@ fn detail_value_content(app: &App) -> (Vec<Line<'static>>, String) {
             "Blob values are visible but not editable in the details modal.",
             Style::default().fg(Color::Gray),
         )));
-    } else if detail.rowid.is_none() {
+    } else if detail.rowid.is_none() && !detail.is_new_row {
         lines.push(Line::from(Span::styled(
             "This row is read-only because rowid is unavailable.",
             Style::default().fg(Color::Gray),

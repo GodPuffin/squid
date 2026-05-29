@@ -80,7 +80,14 @@ impl App {
             if self.detail_is_editing() {
                 "Esc stop editing  Type value  Enter newline  Backspace delete".to_string()
             } else if self.detail_has_changes() {
-                "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key".to_string()
+                if self.detail.as_ref().is_some_and(|detail| detail.is_new_row) {
+                    "e edit field  s insert row  c discard  Up/Down field  Left/Right pane"
+                        .to_string()
+                } else {
+                    "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key".to_string()
+                }
+            } else if self.detail.as_ref().is_some_and(|detail| detail.is_new_row) {
+                "e edit field  s insert row  Up/Down field  Left/Right pane".to_string()
             } else if self.detail_is_row_writable() {
                 "e edit field  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
             } else {
@@ -114,7 +121,11 @@ impl App {
                 }
             }
         } else {
-            "Left/Right or Tab pane  Up/Down move  Enter row details  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+            if self.can_add_new_row() {
+                "Left/Right or Tab pane  Up/Down move  Enter row details  a new row  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+            } else {
+                "Left/Right or Tab pane  Up/Down move  Enter row details  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+            }
         }
     }
 

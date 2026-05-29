@@ -69,6 +69,7 @@ impl App {
             Action::OpenSearchAll => self.open_search(SearchScope::AllTables)?,
             Action::Quit => {}
             Action::None
+            | Action::NewRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleFocus

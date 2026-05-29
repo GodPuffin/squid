@@ -54,6 +54,7 @@ impl App {
             Action::Delete => self.modal_delete_sort()?,
             Action::Clear => self.modal_clear_sorts()?,
             Action::None
+            | Action::NewRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleView
