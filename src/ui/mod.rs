@@ -3,6 +3,7 @@ mod content;
 mod layout;
 mod modals;
 mod search;
+mod settings;
 mod sql;
 mod syntax;
 mod tables;
@@ -19,6 +20,11 @@ pub use layout::{
 pub(crate) use modals::detail::action_rects as detail_action_rects;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    if app.settings_open() {
+        settings::render(frame, app, layout);
+        return;
+    }
+
     if app.is_home() {
         content::render(frame, app, layout);
         return;

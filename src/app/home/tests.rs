@@ -2,7 +2,7 @@
 use std::os::unix::ffi::OsStringExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::app::{AppMode, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
+use crate::app::{AppMode, AppSettings, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
 use crate::db::FilterMode;
 
 use super::{
@@ -337,4 +337,22 @@ fn unique_suffix() -> u128 {
 
 fn cleanup(path: &std::path::Path) {
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn app_settings_round_trip_through_storage() {
+    let storage = unique_test_path("app-settings", "db");
+    let settings = AppSettings {
+        mouse_enabled: false,
+        restore_session_on_open: false,
+        auto_open_last_database: false,
+        recent_limit: 25,
+        sql_result_row_limit: 500,
+    };
+
+    AppStorage::save_settings_at(&storage, &settings).unwrap();
+    let loaded = AppStorage::load_settings_at(&storage).unwrap();
+    assert_eq!(loaded, settings);
+
+    cleanup(&storage);
 }

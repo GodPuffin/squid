@@ -219,6 +219,7 @@ impl App {
             | Action::SwitchToSql
             | Action::ToggleView
             | Action::OpenConfig
+            | Action::OpenSettings
             | Action::ToggleItem
             | Action::EditDetail
             | Action::SaveDetail

@@ -72,8 +72,12 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
+        if self.settings_open() {
+            return self.settings_footer_hint();
+        }
+
         if self.is_home() {
-            "up/down move  enter open  del remove  r reload  q quit".to_string()
+            "up/down move  enter open  , settings  del remove  r reload  q quit".to_string()
         } else if self.mode == AppMode::Sql {
             "Tab cycle panes  F5 Run  Enter newline/apply completion".to_string()
         } else if self.detail.is_some() {
@@ -122,9 +126,9 @@ impl App {
             }
         } else {
             if self.can_add_new_row() {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  a new row  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+                "Left/Right or Tab pane  Up/Down move  Enter row details  a new row  , settings  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
             } else {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+                "Left/Right or Tab pane  Up/Down move  Enter row details  , settings  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
             }
         }
     }

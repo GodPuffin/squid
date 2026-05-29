@@ -6,6 +6,7 @@ mod modal;
 mod navigation;
 mod presenter;
 mod search;
+mod settings;
 mod sql;
 mod state;
 mod table_config;
@@ -17,6 +18,7 @@ use std::path::PathBuf;
 use crate::db::{Database, DeferredSearchWork, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
+pub use settings::AppSettings;
 pub use state::{
     AppMode, DetailField, DetailForeignTarget, DetailMessage, DetailPane, DetailState,
     FilterModalState, FilterPane, ModalPane, ModalState, SearchScope, SearchState,
@@ -59,6 +61,7 @@ pub enum Action {
     PageUp,
     PageDown,
     OpenConfig,
+    OpenSettings,
     CloseModal,
     ToggleItem,
     Confirm,
@@ -104,6 +107,8 @@ pub struct App {
     pub selected_recent: usize,
     pub status_message: Option<String>,
     pub sql: SqlState,
+    pub(crate) app_settings: AppSettings,
+    pub(crate) settings_page: Option<settings::SettingsState>,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
 }

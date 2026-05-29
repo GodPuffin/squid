@@ -5,13 +5,15 @@ use anyhow::Result;
 use crate::db::RowPreview;
 
 use super::super::{
-    App, AppMode, ContentView, PaneFocus, RecentStore, SqlPane, SqlResultState, SqlState,
-    home::recent_path_is_available,
+    App, AppMode, AppSettings, ContentView, PaneFocus, RecentStore, SqlPane, SqlResultState,
+    SqlState,
+    home::{AppStorage, recent_path_is_available},
 };
 
 impl App {
     pub fn load(path: impl Into<Option<PathBuf>>) -> Result<Self> {
         let path = path.into();
+        let app_settings = AppSettings::load().unwrap_or_default();
         let (recent_items, status_message) = match RecentStore::load() {
             Ok(items) => (items, None),
             Err(error) => (Vec::new(), Some(format!("Could not load recents: {error}"))),
@@ -42,11 +44,23 @@ impl App {
             selected_recent: 0,
             status_message,
             sql: default_sql_state(),
+            app_settings,
+            settings_page: None,
             configs: std::collections::HashMap::new(),
             schema_lines_cache: std::cell::RefCell::new(None),
         };
 
-        if let Some(path) = path.filter(|path| recent_path_is_available(path)) {
+        let startup_path = path.or_else(|| {
+            if !app.app_settings.auto_open_last_database {
+                return None;
+            }
+            AppStorage::last_opened_path()
+                .ok()
+                .flatten()
+                .filter(|path| recent_path_is_available(path))
+        });
+
+        if let Some(path) = startup_path {
             if let Err(error) = app.open_database(&path) {
                 app.status_message = Some(format!("Could not restore {}: {error}", path.display()));
                 app.refresh_home_selection();
