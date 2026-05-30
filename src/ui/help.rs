@@ -34,10 +34,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|entry| {
             Line::from(vec![
-                Span::styled(
-                    format!("{:>14}  ", entry.key),
-                    theme.emphasis_style(),
-                ),
+                Span::styled(format!("{:>14}  ", entry.key), theme.emphasis_style()),
                 Span::styled(entry.description.as_str(), theme.fg_style()),
             ])
         })
