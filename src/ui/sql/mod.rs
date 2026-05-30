@@ -1,6 +1,5 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table, Wrap};
 
@@ -8,7 +7,6 @@ use crate::app::{App, SqlPane, SqlResultState};
 
 use super::LayoutInfo;
 use super::layout::sql_completion_rect;
-use super::modals::shared::selection_style;
 use super::syntax::highlight_sql_line;
 use super::widgets::panel_block;
 
@@ -24,6 +22,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 }
 
 fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme();
     let lines = app.sql_query_lines();
     let width = area.width.saturating_sub(2) as usize;
     let visible = lines
@@ -32,11 +31,10 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
         .take(app.sql.editor_height)
         .map(|line| {
             Line::from(
-                highlight_sql_line(&visible_editor_slice(
-                    line,
-                    app.sql.editor_col_offset,
-                    width,
-                ))
+                highlight_sql_line(
+                    &visible_editor_slice(line, app.sql.editor_col_offset, width),
+                    theme,
+                )
                 .into_iter()
                 .map(|span| Span::styled(span.content.into_owned(), span.style))
                 .collect::<Vec<_>>(),
@@ -47,7 +45,7 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
     let text = if visible.is_empty() {
         Text::from(Line::from(vec![Span::styled(
             "-- Write SQL here. Press F5 or click Run.",
-            Style::default().fg(Color::DarkGray),
+            theme.empty_style(),
         )]))
     } else {
         Text::from(visible)
@@ -56,6 +54,7 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
     let editor = Paragraph::new(text).block(panel_block(
         "SQL Editor",
         app.sql_focus() == SqlPane::Editor,
+        theme,
     ));
     frame.render_widget(editor, area);
 
@@ -75,6 +74,7 @@ fn render_editor(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_history(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme();
     let items: Vec<ListItem<'_>> = if app.sql.history.is_empty() {
         vec![ListItem::new("No query history")]
     } else {
@@ -91,8 +91,12 @@ fn render_history(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let history = List::new(items)
-        .block(panel_block("History", app.sql_focus() == SqlPane::History))
-        .highlight_style(selection_style())
+        .block(panel_block(
+            "History",
+            app.sql_focus() == SqlPane::History,
+            theme,
+        ))
+        .highlight_style(theme.selection_style())
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();
@@ -101,50 +105,63 @@ fn render_history(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_results(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme();
     match &app.sql.result {
         SqlResultState::Empty => {
             let empty = Paragraph::new("Run a query to see results")
-                .block(panel_block("Results", app.sql_focus() == SqlPane::Results))
-                .wrap(Wrap { trim: true });
+                .block(panel_block(
+                    "Results",
+                    app.sql_focus() == SqlPane::Results,
+                    theme,
+                ))
+                .wrap(Wrap { trim: true })
+                .style(theme.fg_style());
             frame.render_widget(empty, area);
         }
         SqlResultState::Message { text, is_error } => {
             let style = if *is_error {
-                Style::default()
-                    .fg(Color::LightRed)
-                    .add_modifier(Modifier::BOLD)
+                theme.error_style()
             } else {
-                Style::default().fg(Color::LightGreen)
+                theme.success_style()
             };
             let message = Paragraph::new(Line::from(Span::styled(text.as_str(), style)))
-                .block(panel_block("Results", app.sql_focus() == SqlPane::Results))
+                .block(panel_block(
+                    "Results",
+                    app.sql_focus() == SqlPane::Results,
+                    theme,
+                ))
                 .wrap(Wrap { trim: true });
             frame.render_widget(message, area);
         }
-        SqlResultState::Rows { .. } => render_result_table(frame, app, area),
+        SqlResultState::Rows { .. } => render_result_table(frame, app, area, theme),
     }
 }
 
-fn render_result_table(frame: &mut Frame, app: &App, area: Rect) {
+fn render_result_table(frame: &mut Frame, app: &App, area: Rect, theme: crate::theme::Theme) {
     let columns = app.sql_result_columns();
     let rows = app.sql_result_rows_in_view();
     let widths = columns
         .iter()
         .map(|_| Constraint::Min(12))
         .collect::<Vec<_>>();
-    let header = Row::new(columns.iter().map(|column| column.as_str()))
-        .style(Style::default().add_modifier(Modifier::BOLD));
+    let header =
+        Row::new(columns.iter().map(|column| column.as_str())).style(theme.emphasis_style());
     let body = rows
         .iter()
         .map(|row| Row::new(row.iter().map(|value| Cell::from(value.as_str()))));
     let table = Table::new(body, widths)
         .header(header)
-        .block(panel_block("Results", app.sql_focus() == SqlPane::Results))
+        .block(panel_block(
+            "Results",
+            app.sql_focus() == SqlPane::Results,
+            theme,
+        ))
         .column_spacing(1);
     frame.render_widget(table, area);
 }
 
 fn render_completion(frame: &mut Frame, app: &App, editor_area: Rect, popup_rect: Option<Rect>) {
+    let theme = app.theme();
     let Some(completion) = &app.sql.completion else {
         return;
     };
@@ -175,8 +192,8 @@ fn render_completion(frame: &mut Frame, app: &App, editor_area: Rect, popup_rect
             .map(|item| ListItem::new(item.label.as_str()))
             .collect::<Vec<_>>(),
     )
-    .block(panel_block("Completion", true))
-    .highlight_style(selection_style())
+    .block(panel_block("Completion", true, theme))
+    .highlight_style(theme.selection_style())
     .highlight_symbol(">> ");
 
     let mut state = ListState::default();

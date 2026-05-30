@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use crate::db::{Database, DeferredSearchWork, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
+pub use crate::theme::ColorScheme;
 pub use settings::{AppSettings, DefaultBrowseView};
 pub use state::{
     AppMode, DetailField, DetailForeignTarget, DetailMessage, DetailPane, DetailState,
@@ -113,6 +114,12 @@ pub struct App {
     pub(crate) pending_recent_removal: Option<PathBuf>,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
+}
+
+impl App {
+    pub fn theme(&self) -> crate::theme::Theme {
+        crate::theme::Theme::from_scheme(self.app_settings.color_scheme)
+    }
 }
 
 impl Drop for App {

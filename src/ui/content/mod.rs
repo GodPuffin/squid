@@ -1,11 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 use std::sync::{Mutex, OnceLock};
 
 use crate::app::{App, ContentView, PaneFocus};
+use crate::theme::Theme;
 
 use super::LayoutInfo;
 use super::search::render_search;
@@ -25,6 +25,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 }
 
 fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    let theme = app.theme();
     let raw_logo_lines = app.home_logo_lines();
     let logo_width = raw_logo_lines
         .iter()
@@ -34,7 +35,7 @@ fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let logo_height = raw_logo_lines.len() as u16;
     let logo_area = centered_fixed_rect(layout.header, logo_width, logo_height);
     let logo_lines: Vec<Line<'_>> = raw_logo_lines.into_iter().map(Line::from).collect();
-    let logo = Paragraph::new(logo_lines);
+    let logo = Paragraph::new(logo_lines).style(theme.fg_style());
     frame.render_widget(logo, logo_area);
 
     let items: Vec<ListItem<'_>> = app
@@ -43,13 +44,12 @@ fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .map(ListItem::new)
         .collect();
     let recents = List::new(items)
-        .block(panel_block("recents", app.focus == PaneFocus::Tables))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
+        .block(panel_block(
+            "recents",
+            app.focus == PaneFocus::Tables,
+            theme,
+        ))
+        .highlight_style(theme.list_highlight_style())
         .highlight_symbol("  ");
     let mut state = ListState::default().with_offset(super::list_scroll_offset(
         layout.tables,
@@ -62,13 +62,15 @@ fn render_home(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     frame.render_stateful_widget(recents, layout.tables, &mut state);
 
     if let Some(status) = app.home_status_line() {
-        let status = Paragraph::new(status).alignment(Alignment::Center);
+        let status = Paragraph::new(status)
+            .alignment(Alignment::Center)
+            .style(theme.fg_style());
         frame.render_widget(status, layout.content);
     }
 
     let controls = Paragraph::new(app.footer_hint())
         .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
+        .style(theme.muted_weak_style());
     frame.render_widget(controls, layout.footer);
 }
 
@@ -90,12 +92,14 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         return;
     }
 
+    let theme = app.theme();
     let title = app.content_title();
 
     if app.preview.columns.is_empty() {
         let message = Paragraph::new("No rows to preview")
-            .block(panel_block(&title, app.focus == PaneFocus::Content))
-            .wrap(Wrap { trim: true });
+            .block(panel_block(&title, app.focus == PaneFocus::Content, theme))
+            .wrap(Wrap { trim: true })
+            .style(theme.fg_style());
         frame.render_widget(message, layout.content);
         return;
     }
@@ -119,7 +123,7 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     } else {
         Row::new(header_cells)
     }
-    .style(Style::default().add_modifier(Modifier::BOLD));
+    .style(theme.emphasis_style());
 
     let rows = app.preview.rows.iter().enumerate().map(|(idx, row)| {
         let data_cells = row
@@ -142,8 +146,8 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
     let table = Table::new(rows, all_widths)
         .header(header)
-        .block(panel_block(&title, app.focus == PaneFocus::Content))
-        .row_highlight_style(super::modals::shared::selection_style())
+        .block(panel_block(&title, app.focus == PaneFocus::Content, theme))
+        .row_highlight_style(theme.selection_style())
         .highlight_symbol(">> ")
         .column_spacing(1);
 
@@ -153,27 +157,28 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 }
 
 fn render_schema(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let theme = app.theme();
     let title = app.content_title();
-    let lines = schema_display_lines(app);
+    let lines = schema_display_lines(app, theme);
 
     let schema = Paragraph::new(lines)
-        .block(panel_block(&title, app.focus == PaneFocus::Content))
+        .block(panel_block(&title, app.focus == PaneFocus::Content, theme))
         .scroll((app.schema_offset as u16, 0))
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .style(theme.fg_style());
 
     frame.render_widget(schema, area);
 }
 
-fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
+pub(super) fn schema_display_lines(app: &App, theme: Theme) -> Vec<Line<'static>> {
     static CACHE: OnceLock<Mutex<Option<(u64, Vec<Line<'static>>)>>> = OnceLock::new();
     let key = app.schema_cache_key();
     let cache = CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(guard) = cache.lock() {
-        if let Some((cached_key, lines)) = guard.as_ref() {
-            if *cached_key == key {
-                return lines.clone();
-            }
-        }
+    if let Ok(guard) = cache.lock()
+        && let Some((cached_key, lines)) = guard.as_ref()
+        && *cached_key == key
+    {
+        return lines.clone();
     }
 
     let mut in_create_sql = false;
@@ -183,7 +188,7 @@ fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
         .map(|line| {
             if in_create_sql {
                 return Line::from(
-                    highlight_sql_line(&line)
+                    highlight_sql_line(&line, theme)
                         .into_iter()
                         .map(|span| Span::styled(span.content.into_owned(), span.style))
                         .collect::<Vec<_>>(),
@@ -194,7 +199,7 @@ fn schema_display_lines(app: &App) -> Vec<Line<'static>> {
                 in_create_sql = true;
             }
 
-            Line::from(line)
+            Line::from(Span::styled(line, theme.fg_style()))
         })
         .collect::<Vec<_>>();
 

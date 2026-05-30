@@ -47,6 +47,7 @@ pub struct AppSettings {
     pub double_click_interval_ms: u64,
     pub restore_cursor_on_startup: bool,
     pub clear_session_on_quit: bool,
+    pub color_scheme: crate::theme::ColorScheme,
 }
 
 impl Default for AppSettings {
@@ -65,6 +66,7 @@ impl Default for AppSettings {
             double_click_interval_ms: 500,
             restore_cursor_on_startup: true,
             clear_session_on_quit: false,
+            color_scheme: crate::theme::ColorScheme::Dark,
         }
     }
 }

@@ -406,6 +406,7 @@ impl App {
 
     pub(crate) fn schema_cache_key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
+        self.app_settings.color_scheme.hash(&mut hasher);
         self.is_home().hash(&mut hasher);
         self.selected_table.hash(&mut hasher);
         self.tables.len().hash(&mut hasher);

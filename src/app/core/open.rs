@@ -45,7 +45,7 @@ impl App {
         } else {
             self.restore_session_state(None)?;
         }
-        match RecentStore::record(&absolute_path) {
+        match RecentStore::record(&absolute_path, self.app_settings.recent_limit) {
             Ok(items) => {
                 self.recent_items = items;
                 if !self.recent_items.is_empty() {
@@ -128,7 +128,7 @@ impl App {
     }
 
     fn remove_recent_item(&mut self, path: &std::path::Path) {
-        match RecentStore::remove(path) {
+        match RecentStore::remove(path, self.app_settings.recent_limit) {
             Ok(items) => {
                 self.recent_items = items;
                 self.refresh_home_selection();

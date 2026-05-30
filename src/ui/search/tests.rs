@@ -1,3 +1,5 @@
+use crate::theme::{ColorScheme, Theme};
+
 #[test]
 fn fuzzy_match_positions_returns_ordered_character_matches() {
     assert_eq!(
@@ -18,7 +20,8 @@ fn fuzzy_match_positions_preserve_original_indices_for_casefold_expansions() {
 
 #[test]
 fn highlight_spans_marks_only_matching_positions() {
-    let spans = super::highlight_fuzzy_spans("abc", "ac");
+    let theme = Theme::from_scheme(ColorScheme::Dark);
+    let spans = super::highlight_fuzzy_spans("abc", "ac", theme);
     assert_eq!(spans.len(), 3);
     assert_eq!(spans[0].content.as_ref(), "a");
     assert_eq!(spans[1].content.as_ref(), "b");
@@ -29,17 +32,19 @@ fn highlight_spans_marks_only_matching_positions() {
 
 #[test]
 fn highlight_fuzzy_spans_handles_casefold_expansion_indices() {
-    let spans = super::highlight_fuzzy_spans("İx", "ix");
+    let theme = Theme::from_scheme(ColorScheme::Dark);
+    let spans = super::highlight_fuzzy_spans("İx", "ix", theme);
     assert_eq!(spans.len(), 2);
     assert_eq!(spans[0].content.as_ref(), "İ");
     assert_eq!(spans[1].content.as_ref(), "x");
-    assert_eq!(spans[0].style, super::search_highlight_style());
-    assert_eq!(spans[1].style, super::search_highlight_style());
+    assert_eq!(spans[0].style, theme.search_match_style());
+    assert_eq!(spans[1].style, theme.search_match_style());
 }
 
 #[test]
 fn highlight_exact_spans_uses_contiguous_match() {
-    let spans = super::highlight_exact_spans("a-b-abc", "abc");
+    let theme = Theme::from_scheme(ColorScheme::Dark);
+    let spans = super::highlight_exact_spans("a-b-abc", "abc", theme);
     assert_eq!(spans.len(), 2);
     assert_eq!(spans[0].content.as_ref(), "a-b-");
     assert_eq!(spans[1].content.as_ref(), "abc");
@@ -48,7 +53,8 @@ fn highlight_exact_spans_uses_contiguous_match() {
 
 #[test]
 fn current_table_highlight_prefers_exact_match_when_available() {
-    let spans = super::highlight_current_table_value_spans("A Canadian drama", "canadian");
+    let theme = Theme::from_scheme(ColorScheme::Dark);
+    let spans = super::highlight_current_table_value_spans("A Canadian drama", "canadian", theme);
     assert_eq!(spans.len(), 3);
     assert_eq!(spans[0].content.as_ref(), "A ");
     assert_eq!(spans[1].content.as_ref(), "Canadian");
@@ -94,10 +100,11 @@ fn search_loading_message_matches_scope() {
 
 #[test]
 fn crop_spans_skips_prefix_characters_across_spans() {
+    let theme = Theme::from_scheme(ColorScheme::Dark);
     let spans = super::crop_spans(
         vec![
             ratatui::text::Span::raw("ab"),
-            ratatui::text::Span::styled("cd", super::search_highlight_style()),
+            ratatui::text::Span::styled("cd", theme.search_match_style()),
             ratatui::text::Span::raw("ef"),
         ],
         3,
@@ -106,5 +113,5 @@ fn crop_spans_skips_prefix_characters_across_spans() {
     assert_eq!(spans.len(), 2);
     assert_eq!(spans[0].content.as_ref(), "d");
     assert_eq!(spans[1].content.as_ref(), "ef");
-    assert_eq!(spans[0].style, super::search_highlight_style());
+    assert_eq!(spans[0].style, theme.search_match_style());
 }

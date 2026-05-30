@@ -14,7 +14,7 @@ impl App {
     pub fn load(path: impl Into<Option<PathBuf>>) -> Result<Self> {
         let path = path.into();
         let app_settings = AppSettings::load().unwrap_or_default();
-        let (recent_items, status_message) = match RecentStore::load() {
+        let (recent_items, status_message) = match RecentStore::load(app_settings.recent_limit) {
             Ok(items) => (items, None),
             Err(error) => (Vec::new(), Some(format!("Could not load recents: {error}"))),
         };

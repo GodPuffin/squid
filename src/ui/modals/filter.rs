@@ -13,6 +13,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let Some(filter_layout) = &layout.filter_modal else {
         return;
     };
+    let theme = app.theme();
 
     render_shell(
         frame,
@@ -22,6 +23,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         "Space toggles columns, adds space in Draft, or cycles operator in Modes | Enter applies",
         filter_layout.header,
         filter_layout.footer,
+        theme,
     );
 
     let (column_idx, mode_idx, active_idx) = app.filter_modal_selected_indices();
@@ -33,6 +35,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.modal_column_lines(),
         column_idx,
         app.filter_modal_pane() == Some(FilterPane::Columns),
+        theme,
     );
     render_list(
         frame,
@@ -41,12 +44,14 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.filter_modal_mode_lines(),
         mode_idx,
         app.filter_modal_pane() == Some(FilterPane::Modes),
+        theme,
     );
     render_filter_workspace(
         frame,
         filter_layout.draft,
         app,
         app.filter_modal_pane() == Some(FilterPane::Draft),
+        theme,
     );
     render_list(
         frame,
@@ -55,6 +60,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.filter_modal_active_lines(),
         active_idx,
         app.filter_modal_pane() == Some(FilterPane::Active),
+        theme,
     );
 }
 
@@ -63,6 +69,7 @@ fn render_filter_workspace(
     area: ratatui::layout::Rect,
     app: &App,
     focused: bool,
+    theme: crate::theme::Theme,
 ) {
     let mode = match app.modal_filter_mode() {
         FilterMode::Contains => "contains",
@@ -92,8 +99,9 @@ fn render_filter_workspace(
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block("Draft", focused))
-            .wrap(Wrap { trim: false }),
+            .block(panel_block("Draft", focused, theme))
+            .wrap(Wrap { trim: false })
+            .style(theme.fg_style()),
         area,
     );
 }
