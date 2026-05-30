@@ -337,7 +337,8 @@ impl App {
     }
 
     pub(crate) fn current_table_search_is_live(&self) -> bool {
-        self.preview.total_rows <= CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS
+        self.app_settings.live_table_search
+            && self.preview.total_rows <= CURRENT_TABLE_LIVE_SEARCH_MAX_ROWS
     }
 
     pub(crate) fn has_pending_work(&self) -> bool {

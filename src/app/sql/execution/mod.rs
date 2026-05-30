@@ -88,10 +88,26 @@ impl App {
                 summary,
             });
         }
+        self.trim_sql_history();
         if !self.sql.history.is_empty() {
             self.sql.selected_history = self.sql.history.len() - 1;
         }
         self.ensure_sql_viewport();
+    }
+
+    pub(in crate::app) fn trim_sql_history(&mut self) {
+        let max = self.app_settings.sql_history_size;
+        if self.sql.history.len() <= max {
+            return;
+        }
+
+        let remove = self.sql.history.len() - max;
+        self.sql.history.drain(0..remove);
+        self.sql.selected_history = self
+            .sql
+            .selected_history
+            .saturating_sub(remove)
+            .min(self.sql.history.len().saturating_sub(1));
     }
 
     pub(super) fn sql_load_history_selected(&mut self) {

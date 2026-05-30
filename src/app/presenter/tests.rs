@@ -154,3 +154,12 @@ fn temp_db_path(label: &str) -> PathBuf {
         .as_nanos();
     std::env::temp_dir().join(format!("squid-presenter-{label}-{stamp}.sqlite"))
 }
+
+#[test]
+fn truncate_cell_preview_respects_limit() {
+    use super::truncate_cell_preview;
+
+    assert_eq!(truncate_cell_preview("hello", 0), "hello");
+    assert_eq!(truncate_cell_preview("hello", 10), "hello");
+    assert_eq!(truncate_cell_preview("hello world", 5), "hello…");
+}

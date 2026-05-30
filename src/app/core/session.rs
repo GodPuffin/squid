@@ -10,6 +10,7 @@ use super::super::{
 impl App {
     pub(super) fn restore_session_state(&mut self, session: Option<StoredSession>) -> Result<()> {
         let Some(session) = session else {
+            self.content_view = self.app_settings.default_content_view();
             self.refresh_preview()?;
             return Ok(());
         };
@@ -19,52 +20,70 @@ impl App {
             mode => mode,
         };
         self.focus = session.focus;
-        self.content_view = session.content_view;
         self.sql.query = session.sql_query;
         self.sql.cursor = session.sql_cursor.min(self.sql.query.len());
         self.sql.focus = session.sql_focus;
         self.sql.history = session.sql_history;
+        self.trim_sql_history();
         self.sql.selected_history = self.sql.history.len().saturating_sub(1);
         self.sql.result = SqlResultState::Empty;
         self.sql.result_scroll = 0;
         self.configs = self.restore_table_configs(&session.table_states)?;
-        self.selected_table = session
-            .selected_table_name
-            .as_deref()
-            .and_then(|table_name| {
-                self.tables
-                    .iter()
-                    .position(|table| table.name == table_name)
-            })
-            .unwrap_or(0);
-        self.selected_row = session.selected_row;
-        self.row_offset = session.row_offset;
-        self.schema_offset = session.schema_offset;
+
+        if self.app_settings.restore_cursor_on_startup {
+            self.content_view = session.content_view;
+            self.selected_table = session
+                .selected_table_name
+                .as_deref()
+                .and_then(|table_name| {
+                    self.tables
+                        .iter()
+                        .position(|table| table.name == table_name)
+                })
+                .unwrap_or(0);
+            self.selected_row = session.selected_row;
+            self.row_offset = session.row_offset;
+            self.schema_offset = session.schema_offset;
+        } else {
+            self.content_view = self.app_settings.default_content_view();
+            self.selected_table = 0;
+            self.selected_row = 0;
+            self.row_offset = 0;
+            self.schema_offset = 0;
+        }
+
         self.refresh_preview()?;
 
-        if let (Some(table_name), Some(rowid)) = (
-            self.selected_table_name().map(str::to_owned),
-            session.selected_row_rowid,
-        ) && let Some(row_offset) = self.db_ref()?.locate_row_offset(
-            &table_name,
-            rowid,
-            &self.current_sort_clauses(),
-            &self.current_filter_clauses(),
-        )? {
-            self.selected_row = row_offset;
+        if self.app_settings.restore_cursor_on_startup {
+            if let (Some(table_name), Some(rowid)) = (
+                self.selected_table_name().map(str::to_owned),
+                session.selected_row_rowid,
+            ) && let Some(row_offset) = self.db_ref()?.locate_row_offset(
+                &table_name,
+                rowid,
+                &self.current_sort_clauses(),
+                &self.current_filter_clauses(),
+            )? {
+                self.selected_row = row_offset;
+            }
+
+            let queried_offset = self.row_offset;
+            self.clamp_row_viewport();
+            if self.row_offset != queried_offset {
+                self.refresh_preview_page()?;
+            }
+            self.clamp_schema_offset();
         }
 
-        let queried_offset = self.row_offset;
-        self.clamp_row_viewport();
-        if self.row_offset != queried_offset {
-            self.refresh_preview_page()?;
-        }
-        self.clamp_schema_offset();
         self.ensure_sql_viewport();
         Ok(())
     }
 
     pub(in crate::app) fn persist_session_state(&self) -> Result<()> {
+        if self.app_settings.clear_session_on_quit {
+            return Ok(());
+        }
+
         let Some(path) = &self.path else {
             return Ok(());
         };

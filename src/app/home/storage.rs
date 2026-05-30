@@ -12,8 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::app::settings::AppSettings;
 use crate::app::{AppMode, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
+use crate::app::{AppSettings, DefaultBrowseView};
 use crate::db::FilterMode;
 
 use super::{normalize_database_path, recent_path_is_available};
@@ -220,7 +220,6 @@ impl AppStorage {
         for row in rows {
             let (key, value) = row?;
             match key.as_str() {
-                "mouse_enabled" => settings.mouse_enabled = parse_settings_bool(&value)?,
                 "restore_session_on_open" => {
                     settings.restore_session_on_open = parse_settings_bool(&value)?;
                 }
@@ -234,12 +233,40 @@ impl AppStorage {
                     settings.sql_result_row_limit =
                         parse_settings_usize(&value, "sql_result_row_limit")?;
                 }
+                "confirm_before_remove_recent" => {
+                    settings.confirm_before_remove_recent = parse_settings_bool(&value)?;
+                }
+                "default_browse_view" => {
+                    settings.default_browse_view = default_browse_view_from_storage(&value)?;
+                }
+                "sql_history_size" => {
+                    settings.sql_history_size = parse_settings_usize(&value, "sql_history_size")?;
+                }
+                "live_table_search" => settings.live_table_search = parse_settings_bool(&value)?,
+                "show_row_numbers" => settings.show_row_numbers = parse_settings_bool(&value)?,
+                "cell_preview_max_chars" => {
+                    settings.cell_preview_max_chars =
+                        parse_settings_usize(&value, "cell_preview_max_chars")?;
+                }
+                "double_click_interval_ms" => {
+                    settings.double_click_interval_ms =
+                        parse_settings_u64(&value, "double_click_interval_ms")?;
+                }
+                "restore_cursor_on_startup" => {
+                    settings.restore_cursor_on_startup = parse_settings_bool(&value)?;
+                }
+                "clear_session_on_quit" => {
+                    settings.clear_session_on_quit = parse_settings_bool(&value)?;
+                }
                 _ => {}
             }
         }
 
         settings.recent_limit = settings.recent_limit.clamp(1, 100);
         settings.sql_result_row_limit = settings.sql_result_row_limit.clamp(1, 100_000);
+        settings.sql_history_size = settings.sql_history_size.clamp(1, 500);
+        settings.cell_preview_max_chars = settings.cell_preview_max_chars.clamp(0, 10_000);
+        settings.double_click_interval_ms = settings.double_click_interval_ms.clamp(100, 2000);
 
         Ok(settings)
     }
@@ -247,10 +274,6 @@ impl AppStorage {
     pub(crate) fn save_settings_at(storage_path: &Path, settings: &AppSettings) -> Result<()> {
         let conn = Self::open_at(storage_path)?;
         let pairs = [
-            (
-                "mouse_enabled",
-                settings_bool_to_storage(settings.mouse_enabled),
-            ),
             (
                 "restore_session_on_open",
                 settings_bool_to_storage(settings.restore_session_on_open),
@@ -263,6 +286,39 @@ impl AppStorage {
             (
                 "sql_result_row_limit",
                 settings.sql_result_row_limit.to_string(),
+            ),
+            (
+                "confirm_before_remove_recent",
+                settings_bool_to_storage(settings.confirm_before_remove_recent),
+            ),
+            (
+                "default_browse_view",
+                default_browse_view_to_storage(settings.default_browse_view),
+            ),
+            ("sql_history_size", settings.sql_history_size.to_string()),
+            (
+                "live_table_search",
+                settings_bool_to_storage(settings.live_table_search),
+            ),
+            (
+                "show_row_numbers",
+                settings_bool_to_storage(settings.show_row_numbers),
+            ),
+            (
+                "cell_preview_max_chars",
+                settings.cell_preview_max_chars.to_string(),
+            ),
+            (
+                "double_click_interval_ms",
+                settings.double_click_interval_ms.to_string(),
+            ),
+            (
+                "restore_cursor_on_startup",
+                settings_bool_to_storage(settings.restore_cursor_on_startup),
+            ),
+            (
+                "clear_session_on_quit",
+                settings_bool_to_storage(settings.clear_session_on_quit),
             ),
         ];
 
@@ -766,6 +822,24 @@ fn parse_settings_usize(value: &str, name: &str) -> Result<usize> {
     value
         .parse::<usize>()
         .with_context(|| format!("invalid {name} setting value: {value}"))
+}
+
+fn parse_settings_u64(value: &str, name: &str) -> Result<u64> {
+    value
+        .parse::<u64>()
+        .with_context(|| format!("invalid {name} setting value: {value}"))
+}
+
+fn default_browse_view_from_storage(value: &str) -> Result<DefaultBrowseView> {
+    match value {
+        "rows" => Ok(DefaultBrowseView::Rows),
+        "schema" => Ok(DefaultBrowseView::Schema),
+        other => anyhow::bail!("invalid default browse view setting value: {other}"),
+    }
+}
+
+fn default_browse_view_to_storage(value: DefaultBrowseView) -> String {
+    value.label().to_string()
 }
 
 fn settings_bool_to_storage(value: bool) -> String {

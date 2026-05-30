@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::db::{Database, RowPreview};
 
 use super::super::{
-    App, AppMode, ContentView, PaneFocus, RecentStore,
+    App, AppMode, PaneFocus, RecentStore,
     home::{AppStorage, normalize_database_path},
 };
 
@@ -29,7 +29,7 @@ impl App {
         self.tables = tables;
         self.selected_table = 0;
         self.focus = PaneFocus::Tables;
-        self.content_view = ContentView::Rows;
+        self.content_view = self.app_settings.default_content_view();
         self.preview = RowPreview::empty();
         self.details = None;
         self.detail = None;
@@ -65,18 +65,21 @@ impl App {
     }
 
     pub(in crate::app) fn move_recent_selection_up(&mut self) {
+        self.clear_pending_recent_removal();
         if self.selected_recent > 0 {
             self.selected_recent -= 1;
         }
     }
 
     pub(in crate::app) fn move_recent_selection_down(&mut self) {
+        self.clear_pending_recent_removal();
         if self.selected_recent + 1 < self.recent_items.len() {
             self.selected_recent += 1;
         }
     }
 
     pub(super) fn open_selected_recent(&mut self) {
+        self.clear_pending_recent_removal();
         let Some(item) = self.selected_recent_item().cloned() else {
             return;
         };
@@ -101,16 +104,40 @@ impl App {
             return;
         };
 
-        match RecentStore::remove(&item.path) {
+        if self.app_settings.confirm_before_remove_recent {
+            let pending = self.pending_recent_removal.as_ref();
+            if pending.is_some_and(|path| path == &item.path) {
+                self.pending_recent_removal = None;
+                self.remove_recent_item(&item.path);
+            } else {
+                self.pending_recent_removal = Some(item.path.clone());
+                self.status_message = Some(format!(
+                    "Press Delete again to remove {} from recents",
+                    item.path.display()
+                ));
+            }
+            return;
+        }
+
+        self.pending_recent_removal = None;
+        self.remove_recent_item(&item.path);
+    }
+
+    pub(in crate::app) fn clear_pending_recent_removal(&mut self) {
+        self.pending_recent_removal = None;
+    }
+
+    fn remove_recent_item(&mut self, path: &std::path::Path) {
+        match RecentStore::remove(path) {
             Ok(items) => {
                 self.recent_items = items;
                 self.refresh_home_selection();
-                self.status_message = Some(format!("Removed {} from recents", item.path.display()));
+                self.status_message = Some(format!("Removed {} from recents", path.display()));
             }
             Err(error) => {
                 self.status_message = Some(format!(
                     "Could not remove {} from recents: {error}",
-                    item.path.display()
+                    path.display()
                 ));
             }
         }

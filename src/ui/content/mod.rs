@@ -100,6 +100,8 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         return;
     }
 
+    let show_row_numbers = app.app_settings.show_row_numbers;
+
     let widths: Vec<Constraint> = app
         .preview
         .columns
@@ -107,25 +109,35 @@ fn render_rows(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .map(|_| Constraint::Min(12))
         .collect();
 
-    let header = Row::new(
-        std::iter::once(Cell::from("#")).chain(
-            app.preview
-                .columns
-                .iter()
-                .map(|column| Cell::from(column.as_str())),
-        ),
-    )
+    let header_cells = app
+        .preview
+        .columns
+        .iter()
+        .map(|column| Cell::from(column.as_str()));
+    let header = if show_row_numbers {
+        Row::new(std::iter::once(Cell::from("#")).chain(header_cells))
+    } else {
+        Row::new(header_cells)
+    }
     .style(Style::default().add_modifier(Modifier::BOLD));
 
     let rows = app.preview.rows.iter().enumerate().map(|(idx, row)| {
-        let row_number = app.row_offset + idx + 1;
-        Row::new(
-            std::iter::once(Cell::from(row_number.to_string()))
-                .chain(row.iter().map(|value| Cell::from(value.as_str()))),
-        )
+        let data_cells = row
+            .iter()
+            .map(|value| Cell::from(app.format_cell_preview(value)));
+        if show_row_numbers {
+            let row_number = app.row_offset + idx + 1;
+            Row::new(std::iter::once(Cell::from(row_number.to_string())).chain(data_cells))
+        } else {
+            Row::new(data_cells)
+        }
     });
 
-    let mut all_widths = vec![Constraint::Length(6)];
+    let mut all_widths = if show_row_numbers {
+        vec![Constraint::Length(6)]
+    } else {
+        Vec::new()
+    };
     all_widths.extend(widths);
 
     let table = Table::new(rows, all_widths)

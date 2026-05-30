@@ -46,6 +46,7 @@ impl App {
             sql: default_sql_state(),
             app_settings,
             settings_page: None,
+            pending_recent_removal: None,
             configs: std::collections::HashMap::new(),
             schema_lines_cache: std::cell::RefCell::new(None),
         };
