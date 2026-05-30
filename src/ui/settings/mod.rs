@@ -1,6 +1,5 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 
@@ -10,6 +9,7 @@ use super::LayoutInfo;
 use super::widgets::panel_block;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    let theme = app.theme();
     let area = centered_rect(layout.content, 72, 80);
     let chunks = Layout::vertical([
         Constraint::Length(3),
@@ -22,10 +22,11 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(theme.overlay_border_style())
+                .style(theme.fill_style()),
         )
         .alignment(Alignment::Center)
-        .style(Style::default().add_modifier(Modifier::BOLD));
+        .style(theme.emphasis_style());
     frame.render_widget(title, chunks[0]);
 
     let visible_rows = chunks[1].height.saturating_sub(2) as usize;
@@ -36,12 +37,9 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .into_iter()
         .map(|(label, value, selected)| {
             let style = if selected {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                theme.list_highlight_style()
             } else {
-                Style::default()
+                theme.fg_style()
             };
             ListItem::new(Line::from(vec![
                 Span::styled(format!("{label:<42}"), style),
@@ -56,19 +54,19 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     }
 
     let list = List::new(items)
-        .block(panel_block("preferences", true))
+        .block(panel_block("preferences", true, theme))
         .highlight_symbol("");
     frame.render_stateful_widget(list, chunks[1], &mut state);
 
     let description = Paragraph::new(app.settings_selected_description())
         .wrap(Wrap { trim: true })
         .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
+        .style(theme.muted_weak_style());
     frame.render_widget(description, chunks[2]);
 
     let hint = Paragraph::new(app.settings_footer_hint())
         .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
+        .style(theme.muted_weak_style());
     frame.render_widget(hint, layout.footer);
 }
 

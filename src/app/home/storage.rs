@@ -258,6 +258,9 @@ impl AppStorage {
                 "clear_session_on_quit" => {
                     settings.clear_session_on_quit = parse_settings_bool(&value)?;
                 }
+                "color_scheme" => {
+                    settings.color_scheme = crate::theme::parse_color_scheme(&value)?;
+                }
                 _ => {}
             }
         }
@@ -319,6 +322,10 @@ impl AppStorage {
             (
                 "clear_session_on_quit",
                 settings_bool_to_storage(settings.clear_session_on_quit),
+            ),
+            (
+                "color_scheme",
+                settings.color_scheme.to_storage().to_string(),
             ),
         ];
 

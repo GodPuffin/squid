@@ -1,17 +1,7 @@
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders};
+use ratatui::widgets::Block;
 
-pub fn panel_block(title: &str, active: bool) -> Block<'_> {
-    let border_style = if active {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+use crate::theme::Theme;
 
-    Block::default()
-        .borders(Borders::ALL)
-        .title(title.to_string())
-        .border_style(border_style)
+pub fn panel_block(title: &str, active: bool, theme: Theme) -> Block<'_> {
+    theme.panel_block(title, active)
 }

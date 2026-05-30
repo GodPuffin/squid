@@ -1,23 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
+use crate::theme::Theme;
 use crate::ui::widgets::panel_block;
 
-pub fn selection_style() -> Style {
-    Style::default()
-        .fg(Color::Black)
-        .bg(Color::Yellow)
-        .add_modifier(Modifier::BOLD)
-}
-
-pub fn overlay_border_style() -> Style {
-    Style::default()
-        .fg(Color::LightCyan)
-        .add_modifier(Modifier::BOLD)
-}
-
+#[allow(clippy::too_many_arguments)]
 pub fn render_shell(
     frame: &mut Frame,
     area: Rect,
@@ -26,23 +14,32 @@ pub fn render_shell(
     footer: &str,
     header_area: Rect,
     footer_area: Rect,
+    theme: Theme,
 ) {
-    frame.render_widget(Clear, area);
+    if let Some(background) = theme.background {
+        frame.render_widget(Block::default().style(theme.fill_style()), area);
+        let _ = background;
+    } else {
+        frame.render_widget(Clear, area);
+    }
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .border_style(overlay_border_style()),
+            .border_style(theme.overlay_border_style())
+            .style(theme.fill_style()),
         area,
     );
     frame.render_widget(
-        Paragraph::new(header).alignment(Alignment::Center),
+        Paragraph::new(header)
+            .alignment(Alignment::Center)
+            .style(theme.fg_style()),
         header_area,
     );
     frame.render_widget(
         Paragraph::new(footer)
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::Gray)),
+            .style(theme.muted_style()),
         footer_area,
     );
 }
@@ -54,6 +51,7 @@ pub fn render_list(
     items: &[String],
     selected: Option<usize>,
     focused: bool,
+    theme: Theme,
 ) {
     let list_items: Vec<ListItem<'_>> = if items.is_empty() {
         vec![ListItem::new("No items")]
@@ -62,8 +60,8 @@ pub fn render_list(
     };
 
     let list = List::new(list_items)
-        .block(panel_block(title, focused))
-        .highlight_style(selection_style())
+        .block(panel_block(title, focused, theme))
+        .highlight_style(theme.selection_style())
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();

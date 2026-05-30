@@ -1,14 +1,13 @@
 use ratatui::Frame;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::app::{App, PaneFocus, SearchScope};
 use crate::db::fuzzy_match_positions;
+use crate::theme::Theme;
 
 use super::LayoutInfo;
-use super::modals::shared::selection_style;
 use super::widgets::panel_block;
 
 pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
@@ -19,6 +18,7 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     else {
         return;
     };
+    let theme = app.theme();
     let scope = match search.scope {
         SearchScope::CurrentTable => "Current Table",
         SearchScope::AllTables => "All Tables",
@@ -26,20 +26,30 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let search_title = format!("Search {scope}");
 
     let query = Paragraph::new(search.query.as_str())
-        .block(panel_block(&search_title, app.focus == PaneFocus::Content))
-        .wrap(Wrap { trim: false });
+        .block(panel_block(
+            &search_title,
+            app.focus == PaneFocus::Content,
+            theme,
+        ))
+        .wrap(Wrap { trim: false })
+        .style(theme.fg_style());
     frame.render_widget(query, search_box);
 
     if search.loading {
         let loading = Paragraph::new(search_loading_message(search.scope))
-            .block(panel_block("Results", app.focus == PaneFocus::Content))
-            .wrap(Wrap { trim: false });
+            .block(panel_block(
+                "Results",
+                app.focus == PaneFocus::Content,
+                theme,
+            ))
+            .wrap(Wrap { trim: false })
+            .style(theme.fg_style());
         frame.render_widget(loading, search_results);
         return;
     }
 
     if matches!(search.scope, SearchScope::CurrentTable) {
-        render_current_table_search(frame, app, search_results);
+        render_current_table_search(frame, app, search_results, theme);
         return;
     }
 
@@ -61,22 +71,24 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
                 let mut spans = vec![
                     Span::styled(
                         format!("{}  ", app.display_table_name(&hit.table_name)),
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
+                        theme.search_table_style(),
                     ),
-                    Span::styled(hit.row_label.as_str(), Style::default().fg(Color::Gray)),
+                    Span::styled(hit.row_label.as_str(), theme.muted_style()),
                     Span::raw("  "),
                 ];
-                spans.extend(highlight_exact_spans(&hit.haystack, &search.query));
+                spans.extend(highlight_exact_spans(&hit.haystack, &search.query, theme));
                 ListItem::new(Line::from(crop_spans(spans, search.horizontal_offset)))
             })
             .collect()
     };
 
     let list = List::new(items)
-        .block(panel_block("Results", app.focus == PaneFocus::Content))
-        .highlight_style(selection_style())
+        .block(panel_block(
+            "Results",
+            app.focus == PaneFocus::Content,
+            theme,
+        ))
+        .highlight_style(theme.selection_style())
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();
@@ -84,7 +96,12 @@ pub fn render_search(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     frame.render_stateful_widget(list, search_results, &mut state);
 }
 
-fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn render_current_table_search(
+    frame: &mut Frame,
+    app: &App,
+    area: ratatui::layout::Rect,
+    theme: Theme,
+) {
     let Some(search) = &app.search else {
         return;
     };
@@ -95,8 +112,13 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
             app.current_table_search_is_live(),
         );
         let empty = Paragraph::new(message)
-            .block(panel_block("Results", app.focus == PaneFocus::Content))
-            .wrap(Wrap { trim: false });
+            .block(panel_block(
+                "Results",
+                app.focus == PaneFocus::Content,
+                theme,
+            ))
+            .wrap(Wrap { trim: false })
+            .style(theme.fg_style());
         frame.render_widget(empty, area);
         return;
     }
@@ -104,7 +126,7 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     let headers = app.search_headers();
     let widths: Vec<Constraint> = headers.iter().map(|_| Constraint::Min(12)).collect();
     let header = Row::new(std::iter::once("#").chain(headers.iter().map(String::as_str)))
-        .style(Style::default().add_modifier(Modifier::BOLD));
+        .style(theme.emphasis_style());
 
     let rows = search
         .results
@@ -117,6 +139,7 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
                     Cell::from(Line::from(highlight_current_table_value_spans(
                         value,
                         &search.query,
+                        theme,
                     )))
                 }),
             );
@@ -127,8 +150,12 @@ fn render_current_table_search(frame: &mut Frame, app: &App, area: ratatui::layo
     all_widths.extend(widths);
     let table = Table::new(rows, all_widths)
         .header(header)
-        .block(panel_block("Results", app.focus == PaneFocus::Content))
-        .row_highlight_style(selection_style())
+        .block(panel_block(
+            "Results",
+            app.focus == PaneFocus::Content,
+            theme,
+        ))
+        .row_highlight_style(theme.selection_style())
         .highlight_symbol(">> ")
         .column_spacing(1);
 
@@ -162,15 +189,19 @@ fn search_loading_message(scope: SearchScope) -> &'static str {
     }
 }
 
-fn highlight_current_table_value_spans<'a>(value: &'a str, query: &str) -> Vec<Span<'a>> {
+fn highlight_current_table_value_spans<'a>(
+    value: &'a str,
+    query: &str,
+    theme: Theme,
+) -> Vec<Span<'a>> {
     if exact_match_range(value, query).is_some() {
-        highlight_exact_spans(value, query)
+        highlight_exact_spans(value, query, theme)
     } else {
-        highlight_fuzzy_spans(value, query)
+        highlight_fuzzy_spans(value, query, theme)
     }
 }
 
-fn highlight_fuzzy_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
+fn highlight_fuzzy_spans<'a>(haystack: &'a str, query: &str, theme: Theme) -> Vec<Span<'a>> {
     if query.is_empty() {
         return vec![Span::raw(haystack)];
     }
@@ -180,10 +211,10 @@ fn highlight_fuzzy_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
         return vec![Span::raw(haystack)];
     }
 
-    highlight_char_positions(haystack, &positions)
+    highlight_char_positions(haystack, &positions, theme)
 }
 
-fn highlight_exact_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
+fn highlight_exact_spans<'a>(haystack: &'a str, query: &str, theme: Theme) -> Vec<Span<'a>> {
     if query.is_empty() {
         return vec![Span::raw(haystack)];
     }
@@ -200,7 +231,7 @@ fn highlight_exact_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
     }
     spans.push(Span::styled(
         &haystack[start_byte..end_byte],
-        search_highlight_style(),
+        theme.search_match_style(),
     ));
     if end_byte < haystack.len() {
         spans.push(Span::raw(&haystack[end_byte..]));
@@ -208,7 +239,11 @@ fn highlight_exact_spans<'a>(haystack: &'a str, query: &str) -> Vec<Span<'a>> {
     spans
 }
 
-fn highlight_char_positions<'a>(haystack: &'a str, positions: &[usize]) -> Vec<Span<'a>> {
+fn highlight_char_positions<'a>(
+    haystack: &'a str,
+    positions: &[usize],
+    theme: Theme,
+) -> Vec<Span<'a>> {
     let mut spans = Vec::new();
     let mut normal_start = 0usize;
 
@@ -220,7 +255,7 @@ fn highlight_char_positions<'a>(haystack: &'a str, positions: &[usize]) -> Vec<S
             let byte_end = byte_start + ch.len_utf8();
             spans.push(Span::styled(
                 &haystack[byte_start..byte_end],
-                search_highlight_style(),
+                theme.search_match_style(),
             ));
             normal_start = byte_end;
         }
@@ -280,12 +315,6 @@ fn byte_offset_for_char_index(value: &str, char_index: usize) -> usize {
         .nth(char_index)
         .map(|(byte_index, _)| byte_index)
         .unwrap_or(value.len())
-}
-
-fn search_highlight_style() -> Style {
-    Style::default()
-        .fg(Color::LightYellow)
-        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
 }
 
 #[cfg(test)]

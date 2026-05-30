@@ -358,6 +358,7 @@ fn app_settings_round_trip_through_storage() {
         double_click_interval_ms: 750,
         restore_cursor_on_startup: false,
         clear_session_on_quit: true,
+        color_scheme: crate::theme::ColorScheme::Dracula,
     };
 
     AppStorage::save_settings_at(&storage, &settings).unwrap();

@@ -8,6 +8,7 @@ pub use storage::{AppSettings, DefaultBrowseView};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingId {
+    ColorScheme,
     DoubleClickIntervalMs,
     ConfirmBeforeRemoveRecent,
     AutoOpenLastDatabase,
@@ -24,7 +25,8 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [SettingId; 13] = [
+    pub const ALL: [SettingId; 14] = [
+        SettingId::ColorScheme,
         SettingId::DoubleClickIntervalMs,
         SettingId::ConfirmBeforeRemoveRecent,
         SettingId::AutoOpenLastDatabase,
@@ -42,6 +44,7 @@ impl SettingId {
 
     pub fn label(self) -> &'static str {
         match self {
+            SettingId::ColorScheme => "Color scheme",
             SettingId::DoubleClickIntervalMs => "Double-click interval (ms)",
             SettingId::ConfirmBeforeRemoveRecent => "Confirm before removing recent",
             SettingId::AutoOpenLastDatabase => "Open last database on startup",
@@ -60,6 +63,7 @@ impl SettingId {
 
     pub fn description(self) -> &'static str {
         match self {
+            SettingId::ColorScheme => "Palette used across the entire interface",
             SettingId::DoubleClickIntervalMs => {
                 "Maximum delay between clicks to count as a double-click"
             }
@@ -96,6 +100,7 @@ impl SettingId {
 
     pub fn display_value(self, settings: &AppSettings) -> String {
         match self {
+            SettingId::ColorScheme => settings.color_scheme.label().to_string(),
             SettingId::DoubleClickIntervalMs => settings.double_click_interval_ms.to_string(),
             SettingId::ConfirmBeforeRemoveRecent => {
                 bool_label(settings.confirm_before_remove_recent)
@@ -122,6 +127,9 @@ impl SettingId {
 
     pub fn adjust(self, settings: &mut AppSettings) {
         match self {
+            SettingId::ColorScheme => {
+                settings.color_scheme = settings.color_scheme.cycle();
+            }
             SettingId::DoubleClickIntervalMs => {
                 settings.double_click_interval_ms = cycle_u64(
                     settings.double_click_interval_ms,

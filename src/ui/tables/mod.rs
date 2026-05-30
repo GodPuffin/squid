@@ -1,5 +1,4 @@
 use ratatui::Frame;
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::{App, PaneFocus};
@@ -7,6 +6,7 @@ use crate::app::{App, PaneFocus};
 use super::widgets::panel_block;
 
 pub fn render_tables(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let theme = app.theme();
     let (title, items): (&str, Vec<ListItem<'_>>) = if app.is_home() {
         if app.recent_items.is_empty() {
             ("Recent Files", vec![ListItem::new("No recent files")])
@@ -38,13 +38,8 @@ pub fn render_tables(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) 
     };
 
     let list = List::new(items)
-        .block(panel_block(title, app.focus == PaneFocus::Tables))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
+        .block(panel_block(title, app.focus == PaneFocus::Tables, theme))
+        .highlight_style(theme.list_highlight_style())
         .highlight_symbol(">> ");
 
     let mut state = ListState::default();
