@@ -38,6 +38,53 @@ impl Database {
         Ok(updated_rowid)
     }
 
+    fn run_delete_row(&self, sql: &str, params: &[Value]) -> Result<()> {
+        let mut stmt = self.conn.prepare(sql)?;
+        let mut rows = stmt.query(params_from_iter(params.iter()))?;
+        let Some(_) = rows.next()? else {
+            bail!("refusing to delete: expected exactly one deleted row, deleted 0");
+        };
+
+        if rows.next()?.is_some() {
+            bail!("refusing to delete: expected exactly one deleted row, deleted multiple");
+        }
+
+        Ok(())
+    }
+
+    pub fn delete_row(&self, table_name: &str, rowid: i64) -> Result<()> {
+        if !self.table_is_writable(table_name)? {
+            bail!("row deletes are unavailable because this database is read-only");
+        }
+
+        let rowid_column = self.rowid_alias(table_name)?.ok_or_else(|| {
+            anyhow!("row deletes are unavailable because this table has no usable rowid alias")
+        })?;
+        let table_name = quote_table_name(table_name);
+        let sql =
+            format!("DELETE FROM {table_name} WHERE {rowid_column} = ? RETURNING {rowid_column}");
+        let params = [Value::Integer(rowid)];
+
+        match self.run_delete_row(&sql, &params) {
+            Ok(()) => {
+                self.clear_caches();
+                Ok(())
+            }
+            Err(error)
+                if error
+                    .downcast_ref::<SqlError>()
+                    .is_some_and(is_readonly_write_error)
+                    && !self.conn.is_readonly(MAIN_DB)? =>
+            {
+                self.conn.pragma_update(None, "journal_mode", "MEMORY")?;
+                self.run_delete_row(&sql, &params)?;
+                self.clear_caches();
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn update_row_values(
         &self,
         table_name: &str,

@@ -213,6 +213,8 @@ fn render_footer_bar(frame: &mut Frame, app: &App, area: Rect) {
             "Type to edit  Enter newline  Backspace delete  Esc stop editing"
         } else if is_new_row {
             "e edit field  s insert row  c discard  Up/Down field  Left/Right pane"
+        } else if app.can_delete_detail_row() {
+            "e edit field  s save row  c discard row edits  d delete row  Up/Down field  Left/Right pane  g follow foreign key"
         } else {
             "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key"
         }
@@ -221,7 +223,11 @@ fn render_footer_bar(frame: &mut Frame, app: &App, area: Rect) {
     } else if is_new_row {
         "e edit field  Enter edit focused value  s insert row  Up/Down field  Left/Right pane"
     } else if app.detail_is_row_writable() {
-        "e edit field  Enter edit focused value  Up/Down field  Left/Right pane  g follow foreign key"
+        if app.can_delete_detail_row() {
+            "e edit field  Enter edit focused value  d delete row  Up/Down field  Left/Right pane  g follow foreign key"
+        } else {
+            "e edit field  Enter edit focused value  Up/Down field  Left/Right pane  g follow foreign key"
+        }
     } else {
         "Read-only row  Up/Down field  Left/Right pane  g follow foreign key"
     };

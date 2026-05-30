@@ -70,6 +70,7 @@ impl App {
             Action::Quit => {}
             Action::None
             | Action::NewRow
+            | Action::DeleteRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleFocus
