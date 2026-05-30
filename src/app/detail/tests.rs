@@ -375,11 +375,8 @@ fn delete_row_from_browse_is_noop_when_tables_pane_focused() {
         [],
     )
     .expect("create table");
-    conn.execute(
-        "INSERT INTO items(label) VALUES ('alpha'), ('beta')",
-        [],
-    )
-    .expect("seed");
+    conn.execute("INSERT INTO items(label) VALUES ('alpha'), ('beta')", [])
+        .expect("seed");
     drop(conn);
 
     let mut app = App::load(path.clone()).expect("load app");
