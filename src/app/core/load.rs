@@ -41,6 +41,7 @@ impl App {
             recent_items,
             selected_recent: 0,
             status_message,
+            show_help: false,
             sql: default_sql_state(),
             configs: std::collections::HashMap::new(),
             schema_lines_cache: std::cell::RefCell::new(None),

@@ -78,6 +78,7 @@ pub enum Action {
     NewLine,
     InputChar(char),
     Backspace,
+    ToggleHelp,
 }
 
 pub struct App {
@@ -104,6 +105,7 @@ pub struct App {
     pub recent_items: Vec<RecentItem>,
     pub selected_recent: usize,
     pub status_message: Option<String>,
+    pub show_help: bool,
     pub sql: SqlState,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,

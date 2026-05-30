@@ -91,7 +91,8 @@ impl App {
             | Action::OpenFilters
             | Action::Reload
             | Action::ExecuteSql
-            | Action::NewLine => {}
+            | Action::NewLine
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

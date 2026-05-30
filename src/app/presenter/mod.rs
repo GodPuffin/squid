@@ -6,6 +6,11 @@ use crate::db::FilterMode;
 
 use super::{App, AppMode, FilterPane, ModalPane, SearchScope, home::recent_path_label};
 
+pub struct HelpEntry {
+    pub key: String,
+    pub description: String,
+}
+
 const HOME_LOGO: &str = concat!(
     " ▄▄▄▄▄▄▄   ▄▄▄▄▄   ▄▄▄  ▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄\n",
     "█████▀▀▀ ▄███████▄ ███  ███  ███  ███▀▀██▄\n",
@@ -72,71 +77,261 @@ impl App {
     }
 
     pub fn footer_hint(&self) -> String {
-        if self.is_home() {
-            "up/down move  enter open  del remove  r reload  q quit".to_string()
-        } else if self.mode == AppMode::Sql {
-            "Tab cycle panes  F5 Run  Enter newline/apply completion".to_string()
-        } else if self.detail.is_some() {
-            if self.detail_is_editing() {
-                "Esc stop editing  Type value  Enter newline  Backspace delete".to_string()
-            } else if self.detail_has_changes() {
-                if self.detail.as_ref().is_some_and(|detail| detail.is_new_row) {
-                    "e edit field  s insert row  c discard  Up/Down field  Left/Right pane"
-                        .to_string()
-                } else if self.can_delete_detail_row() {
-                    "e edit field  s save row  c discard row edits  d delete row  Up/Down field  Left/Right pane  g follow foreign key".to_string()
-                } else {
-                    "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key".to_string()
-                }
-            } else if self.detail.as_ref().is_some_and(|detail| detail.is_new_row) {
-                "e edit field  s insert row  Up/Down field  Left/Right pane".to_string()
-            } else if self.detail_is_row_writable() {
-                if self.can_delete_detail_row() {
-                    "e edit field  d delete row  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
-                } else {
-                    "e edit field  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
-                }
+        if self.show_help {
+            return "Esc or ? close help".to_string();
+        }
+
+        let compact = self.compact_footer_hint();
+        if self.help_available() {
+            if compact.is_empty() {
+                "? help".to_string()
             } else {
-                "Read-only row  Up/Down field  Left/Right pane  Wheel or Up/Down in value pane scroll  g follow foreign key".to_string()
-            }
-        } else if self.filter_modal.is_some() {
-            "Esc close  q close outside value input  Left/Right switch pane  Up/Down move  Type value  Enter apply  Delete remove  Space toggle/cycle".to_string()
-        } else if self.modal.is_some() {
-            "Esc/q close  Left/Right switch pane  Space toggle  Enter add/update sort  Delete remove sort  c clear sorts  M filters".to_string()
-        } else if let Some(search) = &self.search {
-            let scope = match search.scope {
-                SearchScope::CurrentTable => "current table",
-                SearchScope::AllTables => "all tables",
-            };
-            if search.loading {
-                format!("Searching {scope}")
-            } else {
-                match search.scope {
-                    SearchScope::CurrentTable if self.current_table_search_is_live() => format!(
-                        "Search {scope}  Type to filter  Up/Down select  Enter jump  Esc close  Backspace delete"
-                    ),
-                    SearchScope::CurrentTable if search.submitted => format!(
-                        "Search {scope}  Edit query then Enter to rerun  Up/Down select  Enter jump  Esc close  Backspace delete"
-                    ),
-                    SearchScope::CurrentTable => format!(
-                        "Search {scope}  Type query then Enter to run  Up/Down select  Enter jump  Esc close  Backspace delete"
-                    ),
-                    SearchScope::AllTables => format!(
-                        "Search {scope}  Type query then Enter to run  Up/Down select  Left/Right scroll  Enter jump  Esc close"
-                    ),
-                }
+                format!("{compact}  ? help")
             }
         } else {
-            if self.can_add_new_row() && self.can_delete_row() {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  a new row  d delete row  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
-            } else if self.can_add_new_row() {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  a new row  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
-            } else if self.can_delete_row() {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  d delete row  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+            compact
+        }
+    }
+
+    pub fn help_available(&self) -> bool {
+        !(self.detail_is_editing()
+            || self.mode == AppMode::Sql && self.sql_focus() == super::SqlPane::Editor)
+            && self.filter_modal_pane() != Some(FilterPane::Draft)
+    }
+
+    pub fn help_title(&self) -> &'static str {
+        if self.is_home() {
+            "Home Controls"
+        } else if self.mode == AppMode::Sql {
+            "SQL Controls"
+        } else if self.detail.is_some() {
+            "Row Detail Controls"
+        } else if self.filter_modal.is_some() {
+            "Filter Controls"
+        } else if self.modal.is_some() {
+            "View Controls"
+        } else if self.search.is_some() {
+            "Search Controls"
+        } else {
+            "Browse Controls"
+        }
+    }
+
+    pub fn help_entries(&self) -> Vec<HelpEntry> {
+        if self.is_home() {
+            return vec![
+                entry("↑/↓", "Move selection"),
+                entry("Enter", "Open database"),
+                entry("Del", "Remove from recents"),
+                entry("r", "Reload recents"),
+                entry("q", "Quit"),
+            ];
+        }
+
+        if self.mode == AppMode::Sql {
+            return vec![
+                entry("1 / 2", "Browse / SQL mode"),
+                entry("Tab", "Cycle panes"),
+                entry("F5", "Run query"),
+                entry("Enter", "New line / apply completion"),
+                entry("↑/↓", "Scroll pane"),
+                entry("PgUp/PgDn", "Scroll results"),
+                entry("c", "Clear history or results"),
+                entry("q", "Quit"),
+            ];
+        }
+
+        if self.detail.is_some() {
+            return self.detail_help_entries();
+        }
+
+        if self.filter_modal.is_some() {
+            return vec![
+                entry("Esc / q", "Close"),
+                entry("←/→", "Switch pane"),
+                entry("↑/↓", "Move selection"),
+                entry("Type", "Edit filter value"),
+                entry("Enter", "Apply filter"),
+                entry("Del", "Remove filter"),
+                entry("Space", "Toggle / cycle mode"),
+            ];
+        }
+
+        if self.modal.is_some() {
+            return vec![
+                entry("Esc / q", "Close"),
+                entry("←/→", "Switch pane"),
+                entry("Space", "Toggle column visibility"),
+                entry("Enter", "Add / update sort"),
+                entry("Del", "Remove sort"),
+                entry("c", "Clear sorts"),
+                entry("M", "Open filters"),
+            ];
+        }
+
+        if let Some(search) = &self.search {
+            return self.search_help_entries(search);
+        }
+
+        self.browse_help_entries()
+    }
+
+    fn compact_footer_hint(&self) -> String {
+        if self.is_home() {
+            return "↑↓ select  Enter open".to_string();
+        }
+
+        if self.mode == AppMode::Sql {
+            return "Tab panes  F5 run".to_string();
+        }
+
+        if self.detail.is_some() {
+            if self.detail_is_editing() {
+                return "Esc done  Enter newline".to_string();
+            }
+            if self.detail_has_changes() {
+                let save = if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
+                    "s insert"
+                } else {
+                    "s save"
+                };
+                return format!("{save}  c discard  e edit");
+            }
+            if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
+                return "e edit  s insert".to_string();
+            }
+            if self.detail_is_row_writable() && self.can_delete_detail_row() {
+                return "e edit  d delete  g follow".to_string();
+            }
+            if self.detail_is_row_writable() {
+                return "e edit  g follow".to_string();
+            }
+            return "Read-only  g follow".to_string();
+        }
+
+        if self.filter_modal.is_some() {
+            return "Esc close  Enter apply".to_string();
+        }
+
+        if self.modal.is_some() {
+            return "Esc close  Enter sort".to_string();
+        }
+
+        if let Some(search) = &self.search {
+            if search.loading {
+                let scope = match search.scope {
+                    SearchScope::CurrentTable => "current table",
+                    SearchScope::AllTables => "all tables",
+                };
+                return format!("Searching {scope}…");
+            }
+            return "Type query  ↑↓ select  Enter jump".to_string();
+        }
+
+        "Tab panes  ↑↓ move  Enter details".to_string()
+    }
+
+    fn browse_help_entries(&self) -> Vec<HelpEntry> {
+        let mut entries = vec![
+            entry("1 / 2", "Browse / SQL mode"),
+            entry("Tab / ←/→", "Switch panes"),
+            entry("↑/↓", "Move selection"),
+            entry("Enter", "Open row details"),
+            entry("f", "Search current table"),
+            entry("F", "Search all tables"),
+            entry("v", "Toggle rows / schema"),
+            entry("m", "Sort & columns"),
+            entry("M", "Filters"),
+            entry("r", "Reload"),
+            entry("q", "Quit"),
+        ];
+
+        if self.can_add_new_row() {
+            entries.insert(4, entry("a", "New row"));
+        }
+        if self.can_delete_row() {
+            let idx = if self.can_add_new_row() { 5 } else { 4 };
+            entries.insert(idx, entry("d", "Delete row"));
+        }
+
+        entries
+    }
+
+    fn detail_help_entries(&self) -> Vec<HelpEntry> {
+        if self.detail_is_editing() {
+            return vec![
+                entry("Esc", "Stop editing"),
+                entry("Type", "Edit value"),
+                entry("Enter", "New line"),
+                entry("Backspace", "Delete character"),
+            ];
+        }
+
+        let mut entries = vec![
+            entry("Esc / q", "Close"),
+            entry("←/→", "Switch pane"),
+            entry("↑/↓", "Move field"),
+            entry("Wheel / ↑/↓", "Scroll value pane"),
+            entry("e", "Edit field"),
+            entry("g", "Follow foreign key"),
+        ];
+
+        if self.detail_has_changes() {
+            let save = if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
+                "Insert row"
             } else {
-                "Left/Right or Tab pane  Up/Down move  Enter row details  f search table  F search all  v rows/schema  m sort  M filters  r reload  q quit".to_string()
+                "Save row"
+            };
+            entries.push(entry("s", save));
+            entries.push(entry("c", "Discard changes"));
+        } else if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
+            entries.push(entry("s", "Insert row"));
+        }
+
+        if self.can_delete_detail_row()
+            && !self.detail.as_ref().is_some_and(|d| d.is_new_row)
+            && !self.detail_has_changes()
+        {
+            entries.push(entry("d", "Delete row"));
+        }
+
+        entries
+    }
+
+    fn search_help_entries(&self, search: &super::SearchState) -> Vec<HelpEntry> {
+        let scope = match search.scope {
+            SearchScope::CurrentTable => "current table",
+            SearchScope::AllTables => "all tables",
+        };
+
+        if search.loading {
+            return vec![entry("…", format!("Searching {scope}"))];
+        }
+
+        let mut entries = vec![
+            entry("Esc", "Close search"),
+            entry("↑/↓", "Select result"),
+            entry("Enter", "Jump to result"),
+            entry("Backspace", "Delete character"),
+        ];
+
+        match search.scope {
+            SearchScope::CurrentTable if self.current_table_search_is_live() => {
+                entries.insert(1, entry("Type", "Filter results"));
+            }
+            SearchScope::CurrentTable if search.submitted => {
+                entries.insert(1, entry("Type", "Edit query, Enter to rerun"));
+            }
+            SearchScope::CurrentTable => {
+                entries.insert(1, entry("Type", "Enter query to run"));
+            }
+            SearchScope::AllTables => {
+                entries.insert(1, entry("Type", "Enter query to run"));
+                entries.insert(3, entry("←/→", "Scroll results"));
             }
         }
+
+        entries
     }
 
     pub fn content_title(&self) -> String {
@@ -415,6 +610,13 @@ impl App {
 
 fn empty_as_unknown(value: &str) -> &str {
     if value.is_empty() { "UNKNOWN" } else { value }
+}
+
+fn entry(key: impl Into<String>, description: impl Into<String>) -> HelpEntry {
+    HelpEntry {
+        key: key.into(),
+        description: description.into(),
+    }
 }
 
 fn format_create_sql(sql: &str) -> Vec<String> {

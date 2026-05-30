@@ -37,9 +37,12 @@ fn content_title_includes_hidden_filter_and_sort_summaries() {
 }
 
 #[test]
-fn footer_hint_changes_with_active_modal_state() {
+fn footer_hint_is_compact_and_offers_help() {
     let mut app = app_with_presenter_data("presenter-footer");
-    assert!(app.footer_hint().contains("Enter row details"));
+    let hint = app.footer_hint();
+    assert!(hint.contains("Enter details"));
+    assert!(hint.contains("? help"));
+    assert!(hint.len() < 80);
 
     app.modal = Some(ModalState {
         pane: ModalPane::Columns,
@@ -48,7 +51,7 @@ fn footer_hint_changes_with_active_modal_state() {
         sort_active_index: 0,
         pending_desc: false,
     });
-    assert!(app.footer_hint().contains("Enter add/update sort"));
+    assert!(app.footer_hint().contains("Enter sort"));
 
     app.modal = None;
     app.open_filter_modal();
@@ -57,10 +60,23 @@ fn footer_hint_changes_with_active_modal_state() {
 }
 
 #[test]
+fn help_entries_cover_browse_actions() {
+    let app = app_with_presenter_data("presenter-help-entries");
+    let keys: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect();
+    assert!(keys.iter().any(|key| key.contains("Enter")));
+    assert!(keys.iter().any(|key| key.contains('f')));
+    assert!(keys.iter().any(|key| key.contains('m')));
+}
+
+#[test]
 fn footer_hint_matches_current_table_search_mode() {
     let mut app = app_with_presenter_data("presenter-search-footer");
     app.open_search(SearchScope::CurrentTable).unwrap();
-    assert!(app.footer_hint().contains("Type to filter"));
+    assert!(app.footer_hint().contains("Type query"));
 
     app.preview.total_rows = 2_001;
     app.search = Some(SearchState {
@@ -74,7 +90,7 @@ fn footer_hint_matches_current_table_search_mode() {
         submitted: true,
         loading: false,
     });
-    assert!(app.footer_hint().contains("Edit query then Enter to rerun"));
+    assert!(app.footer_hint().contains("Type query"));
 
     app.search.as_mut().unwrap().loading = true;
     assert!(app.footer_hint().contains("Searching current table"));

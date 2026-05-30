@@ -228,7 +228,8 @@ impl App {
             | Action::OpenSearchAll
             | Action::OpenFilters
             | Action::NewRow
-            | Action::DeleteRow => {}
+            | Action::DeleteRow
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

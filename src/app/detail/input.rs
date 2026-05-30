@@ -35,7 +35,8 @@ impl App {
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::OpenFilters
-            | Action::ExecuteSql => {}
+            | Action::ExecuteSql
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

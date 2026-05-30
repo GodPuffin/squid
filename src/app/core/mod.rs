@@ -15,6 +15,15 @@ use super::{Action, App, AppMode, ContentView, PaneFocus};
 
 impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
+        if matches!(action, Action::ToggleHelp) {
+            self.show_help = !self.show_help;
+            return Ok(());
+        }
+
+        if self.show_help {
+            return Ok(());
+        }
+
         if self.is_home() {
             return self.handle_home(action);
         }
@@ -87,7 +96,8 @@ impl App {
             | Action::InputChar(_)
             | Action::Backspace
             | Action::SwitchToBrowse
-            | Action::SwitchToSql => {}
+            | Action::SwitchToSql
+            | Action::ToggleHelp => {}
         }
 
         Ok(())
@@ -277,7 +287,8 @@ impl App {
             | Action::Backspace
             | Action::FollowLink
             | Action::NewRow
-            | Action::DeleteRow => {}
+            | Action::DeleteRow
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

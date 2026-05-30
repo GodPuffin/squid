@@ -73,7 +73,8 @@ impl App {
             | Action::InputChar(_)
             | Action::Backspace
             | Action::ExecuteSql
-            | Action::NewLine => {}
+            | Action::NewLine
+            | Action::ToggleHelp => {}
         }
 
         Ok(())
