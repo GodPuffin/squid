@@ -77,12 +77,14 @@ impl App {
             Action::OpenSearchAll => self.open_search(super::SearchScope::AllTables)?,
             Action::Confirm => self.open_detail()?,
             Action::NewRow => self.open_new_row()?,
+            Action::DeleteRow if self.can_delete_row() => self.delete_selected_row()?,
             Action::CloseModal
             | Action::ToggleItem
             | Action::FollowLink
             | Action::EditDetail
             | Action::SaveDetail
             | Action::DiscardDetail
+            | Action::DeleteRow
             | Action::Delete
             | Action::Clear
             | Action::MoveHome
@@ -286,7 +288,8 @@ impl App {
             | Action::InputChar(_)
             | Action::Backspace
             | Action::FollowLink
-            | Action::NewRow => {}
+            | Action::NewRow
+            | Action::DeleteRow => {}
         }
 
         Ok(())

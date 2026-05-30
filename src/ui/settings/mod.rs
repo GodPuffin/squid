@@ -30,7 +30,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
     let visible_rows = chunks[1].height.saturating_sub(2) as usize;
     let scroll_offset = app.settings_scroll_offset(visible_rows);
-
+    let row_width = chunks[1].width.saturating_sub(2) as usize;
     let items: Vec<ListItem<'_>> = app
         .settings_lines()
         .into_iter()
@@ -43,10 +43,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
             } else {
                 Style::default()
             };
-            ListItem::new(Line::from(vec![
-                Span::styled(format!("{label:<42}"), style),
-                Span::styled(value, style),
-            ]))
+            ListItem::new(settings_row_line(&label, &value, row_width, style))
         })
         .collect();
 
@@ -72,6 +69,30 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     frame.render_widget(hint, layout.footer);
 }
 
+fn settings_row_line(label: &str, value: &str, width: usize, style: Style) -> Line<'static> {
+    const MIN_GAP: usize = 2;
+    let value_width = value.chars().count();
+    let mut label_text = label.to_string();
+    let max_label_width = width.saturating_sub(value_width).saturating_sub(MIN_GAP);
+    if label_text.chars().count() > max_label_width {
+        label_text = truncate_chars(&label_text, max_label_width.saturating_sub(1));
+        label_text.push('…');
+    }
+    let label_width = label_text.chars().count();
+    let gap = width
+        .saturating_sub(label_width)
+        .saturating_sub(value_width);
+    Line::from(vec![
+        Span::styled(label_text, style),
+        Span::styled(" ".repeat(gap), style),
+        Span::styled(value.to_string(), style),
+    ])
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
+
 fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let popup_layout = Layout::vertical([
         Constraint::Percentage((100 - percent_y) / 2),
@@ -86,4 +107,44 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ])
     .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::style::Style;
+    use ratatui::text::Span;
+
+    use super::{settings_row_line, truncate_chars};
+
+    fn line_width(line: &ratatui::text::Line<'_>) -> usize {
+        line.spans
+            .iter()
+            .map(|span: &Span<'_>| span.content.chars().count())
+            .sum()
+    }
+
+    fn line_value(line: &ratatui::text::Line<'_>) -> String {
+        line.spans.last().expect("value span").content.to_string()
+    }
+
+    #[test]
+    fn settings_row_line_right_aligns_value_within_width() {
+        let line = settings_row_line("Mouse support", "on", 60, Style::default());
+        assert_eq!(line_width(&line), 60);
+        assert_eq!(line_value(&line), "on");
+        assert!(line.spans[1].content.chars().all(|ch| ch == ' '));
+    }
+
+    #[test]
+    fn settings_row_line_truncates_long_labels_before_value() {
+        let label = "Restore session when reopening a database";
+        let line = settings_row_line(label, "off", 40, Style::default());
+        assert_eq!(line_width(&line), 40);
+        assert_eq!(line_value(&line), "off");
+    }
+
+    #[test]
+    fn truncate_chars_limits_by_character_count() {
+        assert_eq!(truncate_chars("abcdef", 4), "abcd");
+    }
 }
