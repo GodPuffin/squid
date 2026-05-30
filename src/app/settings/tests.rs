@@ -1,6 +1,15 @@
 use super::{AppSettings, SettingId};
 
 #[test]
+fn settings_footer_hint_does_not_imply_q_quits_app() {
+    let mut app = super::super::App::load(None).expect("load app");
+    app.open_settings();
+    let hint = app.settings_footer_hint();
+    assert!(hint.contains("Esc/q close"));
+    assert!(!hint.contains("q quit"));
+}
+
+#[test]
 fn setting_ids_cycle_numeric_options() {
     let mut settings = AppSettings::default();
     assert_eq!(settings.recent_limit, 10);

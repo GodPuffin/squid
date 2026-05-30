@@ -156,7 +156,7 @@ impl super::App {
     }
 
     pub fn settings_footer_hint(&self) -> String {
-        "Up/Down move  Space/Enter change  Esc close  q quit".to_string()
+        "Up/Down move  Space/Enter change  Esc/q close".to_string()
     }
 
     pub fn handle_settings(&mut self, action: super::Action) -> Result<()> {
