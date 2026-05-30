@@ -262,7 +262,7 @@ impl Theme {
 fn dark() -> Theme {
     Theme {
         scheme: ColorScheme::Dark,
-        background: None,
+        background: Some(Color::Black),
         foreground: Color::White,
         muted: Color::Gray,
         muted_weak: Color::DarkGray,
