@@ -5,7 +5,7 @@ use super::super::{App, RecentStore};
 impl App {
     pub(in crate::app) fn reload(&mut self) -> Result<()> {
         if self.is_home() {
-            match RecentStore::load() {
+            match RecentStore::load(self.app_settings.recent_limit) {
                 Ok(items) => {
                     self.recent_items = items;
                     self.refresh_home_selection();

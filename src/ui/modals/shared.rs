@@ -16,11 +16,9 @@ pub fn render_shell(
     footer_area: Rect,
     theme: Theme,
 ) {
-    if let Some(background) = theme.background {
+    frame.render_widget(Clear, area);
+    if theme.background.is_some() {
         frame.render_widget(Block::default().style(theme.fill_style()), area);
-        let _ = background;
-    } else {
-        frame.render_widget(Clear, area);
     }
     frame.render_widget(
         Block::default()

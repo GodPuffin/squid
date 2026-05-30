@@ -405,7 +405,7 @@ fn solarized_light() -> Theme {
         background: Some(rgb(253, 246, 227)),
         foreground: rgb(101, 123, 131),
         muted: rgb(147, 161, 161),
-        muted_weak: rgb(181, 137, 0),
+        muted_weak: rgb(147, 161, 161),
         accent: rgb(38, 139, 210),
         border_active: rgb(38, 139, 210),
         border_inactive: rgb(147, 161, 161),

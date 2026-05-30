@@ -65,22 +65,19 @@ pub(crate) struct StoredSession {
 pub struct RecentStore;
 
 impl RecentStore {
-    pub fn load() -> Result<Vec<RecentItem>> {
-        let limit = crate::app::AppSettings::load()
-            .map(|settings| settings.recent_limit)
-            .unwrap_or(10);
+    pub fn load(limit: usize) -> Result<Vec<RecentItem>> {
         AppStorage::load_recent(limit)
     }
 
-    pub fn record(path: &Path) -> Result<Vec<RecentItem>> {
+    pub fn record(path: &Path, limit: usize) -> Result<Vec<RecentItem>> {
         let absolute = normalize_database_path(path)?;
         AppStorage::record_recent(&absolute)?;
-        Self::load()
+        Self::load(limit)
     }
 
-    pub fn remove(path: &Path) -> Result<Vec<RecentItem>> {
+    pub fn remove(path: &Path, limit: usize) -> Result<Vec<RecentItem>> {
         AppStorage::remove_recent(path)?;
-        Self::load()
+        Self::load(limit)
     }
 }
 

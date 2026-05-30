@@ -58,9 +58,13 @@ impl App {
             Action::CloseModal | Action::Quit | Action::OpenFilters => {
                 self.filter_modal = None;
             }
-            Action::OpenConfig | Action::OpenSettings => {
+            Action::OpenConfig => {
                 self.filter_modal = None;
                 self.open_config_modal();
+            }
+            Action::OpenSettings => {
+                self.filter_modal = None;
+                self.open_settings();
             }
             Action::ReverseFocus => self.filter_modal_move_left(),
             Action::MoveLeft => self.filter_modal_move_left(),

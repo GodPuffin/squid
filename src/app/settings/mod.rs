@@ -234,6 +234,10 @@ impl super::App {
     }
 
     pub fn open_settings(&mut self) {
+        self.modal = None;
+        self.filter_modal = None;
+        self.detail = None;
+        self.close_search();
         self.settings_page = Some(SettingsState::new());
     }
 
@@ -273,7 +277,7 @@ impl super::App {
     }
 
     pub fn settings_footer_hint(&self) -> String {
-        "Up/Down move  Space/Enter change  Esc close  q quit".to_string()
+        "Up/Down move  Space/Enter change  Esc/q close".to_string()
     }
 
     pub fn handle_settings(&mut self, action: super::Action) -> Result<()> {
@@ -329,7 +333,7 @@ impl super::App {
     }
 
     fn reload_recents_for_settings(&mut self) -> Result<()> {
-        self.recent_items = super::RecentStore::load()?;
+        self.recent_items = super::RecentStore::load(self.app_settings.recent_limit)?;
         self.refresh_home_selection();
         Ok(())
     }
