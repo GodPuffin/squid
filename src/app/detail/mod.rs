@@ -1,4 +1,5 @@
 mod access;
+mod delete;
 mod input;
 mod open;
 mod save;
