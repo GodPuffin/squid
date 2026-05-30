@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::app::{
-    App, FilterPane, FilterRule, ModalPane, ModalState, RecentItem, SearchScope, SearchState,
-    SortRule, TableConfig,
+    App, AppMode, FilterPane, FilterRule, ModalPane, ModalState, RecentItem, SearchScope,
+    SearchState, SortRule, TableConfig,
 };
 use crate::db::FilterMode;
 
@@ -76,7 +76,11 @@ fn help_entries_cover_browse_actions() {
 #[test]
 fn home_footer_includes_settings_and_confirm_remove() {
     let mut app = App::load(None).unwrap();
+    app.mode = AppMode::Home;
+    app.path = None;
+    app.db = None;
     app.recent_items.clear();
+    assert!(app.is_home());
     assert!(app.footer_hint().contains(", settings"));
 
     app.pending_recent_removal = Some(std::env::temp_dir().join("missing.db"));
