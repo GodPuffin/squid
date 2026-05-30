@@ -353,6 +353,7 @@ fn without_rowid_tables_open_as_read_only_details() {
     let detail = app.detail.as_ref().unwrap();
     assert_eq!(detail.rowid, None);
     assert!(!app.detail_is_row_writable());
+    assert!(!app.can_delete_row());
     assert!(
         detail
             .message
@@ -361,6 +362,31 @@ fn without_rowid_tables_open_as_read_only_details() {
             .text
             .contains("Read-only row")
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_from_browse_is_noop_when_tables_pane_focused() {
+    let path = temp_db_path("detail-delete-tables-focus");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('alpha'), ('beta')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_tables();
+    app.selected_row = 1;
+
+    app.handle(Action::DeleteRow).unwrap();
+
+    assert_eq!(app.preview.total_rows, 2);
 
     let _ = fs::remove_file(path);
 }
@@ -625,6 +651,117 @@ fn insert_new_row_from_detail_modal_persists_and_refreshes_preview() {
 
     assert!(app.preview.total_rows >= 1);
     assert!(app.preview.rows.iter().flatten().any(|value| value == "hi"));
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_from_browse_removes_selected_row() {
+    let path = temp_db_path("detail-delete-browse");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('keep'), ('gone')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.selected_row = 1;
+    app.refresh_preview().unwrap();
+    assert!(
+        app.preview
+            .rows
+            .iter()
+            .flatten()
+            .any(|value| value == "gone")
+    );
+
+    app.handle(Action::DeleteRow).unwrap();
+
+    assert_eq!(app.preview.total_rows, 1);
+    assert!(
+        app.preview
+            .rows
+            .iter()
+            .flatten()
+            .all(|value| value != "gone")
+    );
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Deleted row"))
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_from_detail_modal_closes_modal() {
+    let path = temp_db_path("detail-delete-modal");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('remove-me')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_detail().unwrap();
+    assert!(app.detail.is_some());
+
+    app.handle_detail(super::super::Action::DeleteRow).unwrap();
+
+    assert!(app.detail.is_none());
+    assert_eq!(app.preview.total_rows, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_blocks_when_detail_has_unsaved_edits() {
+    let path = temp_db_path("detail-delete-dirty");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.open_detail().unwrap();
+    app.handle_detail(super::super::Action::EditDetail).unwrap();
+    app.handle_detail(super::super::Action::InputChar('!'))
+        .unwrap();
+
+    app.handle_detail(super::super::Action::DeleteRow).unwrap();
+
+    assert!(app.detail.is_some());
+    assert_eq!(app.preview.total_rows, 1);
+    assert!(
+        app.detail
+            .as_ref()
+            .unwrap()
+            .message
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("Discard or save edits")
+    );
 
     let _ = fs::remove_file(path);
 }

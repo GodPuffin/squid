@@ -370,6 +370,70 @@ fn insert_row_values_omits_integer_primary_key_for_autoincrement() {
 }
 
 #[test]
+fn delete_row_removes_matching_row() {
+    let path = temp_db_path("row-delete");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha'), ('beta')", [])
+        .expect("seed");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    db.delete_row("demo", 1).expect("delete");
+
+    let verify = Connection::open(&path).expect("reopen");
+    let count = verify
+        .query_row("SELECT COUNT(*) FROM demo", [], |row| row.get::<_, i64>(0))
+        .expect("count");
+    assert_eq!(count, 1);
+    let remaining = verify
+        .query_row("SELECT name FROM demo", [], |row| row.get::<_, String>(0))
+        .expect("select");
+    assert_eq!(remaining, "beta");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_rejects_missing_row() {
+    let path = temp_db_path("row-delete-missing");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    drop(conn);
+
+    let db = Database::open(&path).expect("open db");
+    let err = db.delete_row("demo", 999).expect_err("missing row");
+
+    assert!(
+        err.to_string().contains("expected exactly one deleted row"),
+        "{err}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_rejects_read_only_databases() {
+    let path = temp_db_path("row-delete-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let uri = read_only_uri(&path);
+    let db = Database::open(uri.as_path()).expect("open db");
+    let err = db.delete_row("demo", 1).expect_err("read-only delete");
+
+    assert!(err.to_string().contains("read-only"), "{err}");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn insert_row_values_rejects_read_only_databases() {
     let path = temp_db_path("row-insert-readonly");
     let conn = Connection::open(&path).expect("create db");

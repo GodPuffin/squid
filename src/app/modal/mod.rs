@@ -55,6 +55,7 @@ impl App {
             Action::Clear => self.modal_clear_sorts()?,
             Action::None
             | Action::NewRow
+            | Action::DeleteRow
             | Action::SwitchToBrowse
             | Action::SwitchToSql
             | Action::ToggleView

@@ -14,6 +14,7 @@ impl App {
             Action::FollowLink | Action::Confirm => self.follow_detail_link()?,
             Action::EditDetail | Action::ToggleItem => self.toggle_detail_editing(),
             Action::SaveDetail => self.save_detail_changes()?,
+            Action::DeleteRow => self.delete_selected_row()?,
             Action::DiscardDetail => self.discard_detail_changes(),
             Action::InputChar(ch) => self.detail_input_char(ch),
             Action::Backspace => self.detail_backspace(),
