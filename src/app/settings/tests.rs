@@ -21,10 +21,7 @@ fn setting_ids_cycle_numeric_options() {
 #[test]
 fn setting_ids_toggle_booleans() {
     let mut settings = AppSettings::default();
-    assert!(settings.mouse_enabled);
-
-    SettingId::MouseEnabled.adjust(&mut settings);
-    assert!(!settings.mouse_enabled);
+    assert!(settings.confirm_before_remove_recent);
 
     SettingId::ConfirmBeforeRemoveRecent.adjust(&mut settings);
     assert!(!settings.confirm_before_remove_recent);

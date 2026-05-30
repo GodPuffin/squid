@@ -220,7 +220,6 @@ impl AppStorage {
         for row in rows {
             let (key, value) = row?;
             match key.as_str() {
-                "mouse_enabled" => settings.mouse_enabled = parse_settings_bool(&value)?,
                 "restore_session_on_open" => {
                     settings.restore_session_on_open = parse_settings_bool(&value)?;
                 }
@@ -275,10 +274,6 @@ impl AppStorage {
     pub(crate) fn save_settings_at(storage_path: &Path, settings: &AppSettings) -> Result<()> {
         let conn = Self::open_at(storage_path)?;
         let pairs = [
-            (
-                "mouse_enabled",
-                settings_bool_to_storage(settings.mouse_enabled),
-            ),
             (
                 "restore_session_on_open",
                 settings_bool_to_storage(settings.restore_session_on_open),

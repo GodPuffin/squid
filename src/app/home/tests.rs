@@ -345,7 +345,6 @@ fn cleanup(path: &std::path::Path) {
 fn app_settings_round_trip_through_storage() {
     let storage = unique_test_path("app-settings", "db");
     let settings = AppSettings {
-        mouse_enabled: false,
         restore_session_on_open: false,
         auto_open_last_database: false,
         recent_limit: 25,

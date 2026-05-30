@@ -8,7 +8,6 @@ pub use storage::{AppSettings, DefaultBrowseView};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SettingId {
-    MouseEnabled,
     DoubleClickIntervalMs,
     ConfirmBeforeRemoveRecent,
     AutoOpenLastDatabase,
@@ -25,8 +24,7 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [SettingId; 14] = [
-        SettingId::MouseEnabled,
+    pub const ALL: [SettingId; 13] = [
         SettingId::DoubleClickIntervalMs,
         SettingId::ConfirmBeforeRemoveRecent,
         SettingId::AutoOpenLastDatabase,
@@ -44,7 +42,6 @@ impl SettingId {
 
     pub fn label(self) -> &'static str {
         match self {
-            SettingId::MouseEnabled => "Mouse support",
             SettingId::DoubleClickIntervalMs => "Double-click interval (ms)",
             SettingId::ConfirmBeforeRemoveRecent => "Confirm before removing recent",
             SettingId::AutoOpenLastDatabase => "Open last database on startup",
@@ -63,7 +60,6 @@ impl SettingId {
 
     pub fn description(self) -> &'static str {
         match self {
-            SettingId::MouseEnabled => "Click tables, rows, and controls with the mouse",
             SettingId::DoubleClickIntervalMs => {
                 "Maximum delay between clicks to count as a double-click"
             }
@@ -100,7 +96,6 @@ impl SettingId {
 
     pub fn display_value(self, settings: &AppSettings) -> String {
         match self {
-            SettingId::MouseEnabled => bool_label(settings.mouse_enabled),
             SettingId::DoubleClickIntervalMs => settings.double_click_interval_ms.to_string(),
             SettingId::ConfirmBeforeRemoveRecent => {
                 bool_label(settings.confirm_before_remove_recent)
@@ -127,7 +122,6 @@ impl SettingId {
 
     pub fn adjust(self, settings: &mut AppSettings) {
         match self {
-            SettingId::MouseEnabled => settings.mouse_enabled = !settings.mouse_enabled,
             SettingId::DoubleClickIntervalMs => {
                 settings.double_click_interval_ms = cycle_u64(
                     settings.double_click_interval_ms,
