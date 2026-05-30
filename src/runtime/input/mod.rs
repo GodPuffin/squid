@@ -3,6 +3,17 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::app::{Action, App, AppMode, ContentView, DetailPane, FilterPane, SqlPane};
 
 pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
+    if app.show_help {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Action::ToggleHelp,
+            _ => Action::None,
+        };
+    }
+
+    if matches!(key.code, KeyCode::Char('?')) && app.help_available() {
+        return Action::ToggleHelp;
+    }
+
     if app.settings_open() {
         return settings_action(key.code);
     }

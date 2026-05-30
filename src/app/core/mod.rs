@@ -15,7 +15,20 @@ use super::{Action, App, AppMode, ContentView, PaneFocus};
 
 impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
+        if matches!(action, Action::ToggleHelp) {
+            self.show_help = !self.show_help;
+            if self.show_help {
+                self.settings_page = None;
+            }
+            return Ok(());
+        }
+
+        if self.show_help {
+            return Ok(());
+        }
+
         if matches!(action, Action::OpenSettings) {
+            self.show_help = false;
             self.open_settings();
             return Ok(());
         }
@@ -97,7 +110,8 @@ impl App {
             | Action::Backspace
             | Action::SwitchToBrowse
             | Action::SwitchToSql
-            | Action::OpenSettings => {}
+            | Action::OpenSettings
+            | Action::ToggleHelp => {}
         }
 
         Ok(())
@@ -289,7 +303,8 @@ impl App {
             | Action::Backspace
             | Action::FollowLink
             | Action::NewRow
-            | Action::DeleteRow => {}
+            | Action::DeleteRow
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

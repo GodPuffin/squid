@@ -154,6 +154,28 @@ fn root_digit_shortcuts_still_switch_modes() {
 }
 
 #[test]
+fn search_accepts_question_mark() {
+    let mut app = test_app("search-question-mark");
+    app.search = Some(SearchState {
+        scope: SearchScope::CurrentTable,
+        query: String::new(),
+        results: Vec::new(),
+        selected_result: 0,
+        result_offset: 0,
+        horizontal_offset: 0,
+        result_limit: 10,
+        submitted: false,
+        loading: false,
+    });
+
+    assert!(!app.help_available());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('?'))),
+        Action::InputChar('?')
+    );
+}
+
+#[test]
 fn search_accepts_numeric_input() {
     let mut app = test_app("search-digit");
     app.search = Some(SearchState {

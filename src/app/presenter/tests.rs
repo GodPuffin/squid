@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::app::{
-    App, FilterPane, FilterRule, ModalPane, ModalState, RecentItem, SearchScope, SearchState,
-    SortRule, TableConfig,
+    App, AppMode, FilterPane, FilterRule, ModalPane, ModalState, RecentItem, SearchScope,
+    SearchState, SortRule, TableConfig,
 };
 use crate::db::FilterMode;
 
@@ -37,9 +37,12 @@ fn content_title_includes_hidden_filter_and_sort_summaries() {
 }
 
 #[test]
-fn footer_hint_changes_with_active_modal_state() {
+fn footer_hint_is_compact_and_offers_help() {
     let mut app = app_with_presenter_data("presenter-footer");
-    assert!(app.footer_hint().contains("Enter row details"));
+    let hint = app.footer_hint();
+    assert!(hint.contains("Enter"));
+    assert!(hint.contains("? help"));
+    assert!(hint.len() < 60);
 
     app.modal = Some(ModalState {
         pane: ModalPane::Columns,
@@ -48,7 +51,7 @@ fn footer_hint_changes_with_active_modal_state() {
         sort_active_index: 0,
         pending_desc: false,
     });
-    assert!(app.footer_hint().contains("Enter add/update sort"));
+    assert!(app.footer_hint().contains("Enter sort"));
 
     app.modal = None;
     app.open_filter_modal();
@@ -57,10 +60,78 @@ fn footer_hint_changes_with_active_modal_state() {
 }
 
 #[test]
+fn help_entries_cover_browse_actions() {
+    let app = app_with_presenter_data("presenter-help-entries");
+    let keys: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect();
+    assert!(keys.iter().any(|key| key.contains("Enter")));
+    assert!(keys.iter().any(|key| key.contains('f')));
+    assert!(keys.iter().any(|key| key.contains('m')));
+    assert!(keys.iter().any(|key| key.contains(',')));
+}
+
+#[test]
+fn home_footer_includes_settings_and_confirm_remove() {
+    let mut app = App::load(None).unwrap();
+    app.mode = AppMode::Home;
+    app.path = None;
+    app.db = None;
+    app.recent_items.clear();
+    assert!(app.is_home());
+    assert!(app.footer_hint().contains(", settings"));
+
+    app.pending_recent_removal = Some(std::env::temp_dir().join("missing.db"));
+    assert!(app.footer_hint().contains("Del confirm"));
+}
+
+#[test]
+fn help_unavailable_while_searching() {
+    let mut app = app_with_presenter_data("presenter-search-help");
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    assert!(!app.help_available());
+    assert!(!app.footer_hint().contains("? help"));
+}
+
+#[test]
+fn detail_help_lists_delete_with_pending_changes() {
+    let mut app = app_with_presenter_data("presenter-detail-delete-help");
+    app.focus = crate::app::PaneFocus::Content;
+    app.content_view = crate::app::ContentView::Rows;
+    app.open_detail().unwrap();
+    if let Some(detail) = app.detail.as_mut() {
+        if let Some(field) = detail.fields.first_mut() {
+            field.draft_value.push('!');
+        }
+    }
+
+    let keys: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect();
+    assert!(keys.iter().any(|key| key == "d"));
+}
+
+#[test]
+fn detail_footer_hint_stays_compact() {
+    let mut app = app_with_presenter_data("presenter-detail-footer");
+    app.focus = crate::app::PaneFocus::Content;
+    app.content_view = crate::app::ContentView::Rows;
+    app.open_detail().unwrap();
+    assert!(app.detail.is_some());
+    let hint = app.footer_hint();
+    assert!(hint.contains("? help"));
+    assert!(hint.len() < 60);
+}
+
+#[test]
 fn footer_hint_matches_current_table_search_mode() {
     let mut app = app_with_presenter_data("presenter-search-footer");
     app.open_search(SearchScope::CurrentTable).unwrap();
-    assert!(app.footer_hint().contains("Type to filter"));
+    assert!(app.footer_hint().contains("Type"));
 
     app.preview.total_rows = 2_001;
     app.search = Some(SearchState {
@@ -74,10 +145,10 @@ fn footer_hint_matches_current_table_search_mode() {
         submitted: true,
         loading: false,
     });
-    assert!(app.footer_hint().contains("Edit query then Enter to rerun"));
+    assert!(app.footer_hint().contains("Type"));
 
     app.search.as_mut().unwrap().loading = true;
-    assert!(app.footer_hint().contains("Searching current table"));
+    assert!(app.footer_hint().contains("Searching table"));
     assert!(!app.footer_hint().contains("Esc close"));
 }
 

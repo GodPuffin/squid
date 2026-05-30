@@ -43,6 +43,7 @@ impl App {
             recent_items,
             selected_recent: 0,
             status_message,
+            show_help: false,
             sql: default_sql_state(),
             app_settings,
             settings_page: None,

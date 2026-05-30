@@ -95,7 +95,8 @@ impl App {
             | Action::SaveDetail
             | Action::DiscardDetail
             | Action::ExecuteSql
-            | Action::NewLine => {}
+            | Action::NewLine
+            | Action::ToggleHelp => {}
         }
 
         Ok(())

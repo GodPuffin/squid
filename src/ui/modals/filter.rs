@@ -19,8 +19,8 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         frame,
         filter_layout.area,
         "Filters",
-        "Pick a column, choose an operator, and apply a row filter",
-        "Space toggles columns, adds space in Draft, or cycles operator in Modes | Enter applies",
+        "",
+        &app.footer_hint(),
         filter_layout.header,
         filter_layout.footer,
         theme,
@@ -95,7 +95,6 @@ fn render_filter_workspace(
         lines.push(Line::from("Value:  none"));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from("Move focus here to type the filter value."));
 
     frame.render_widget(
         Paragraph::new(lines)

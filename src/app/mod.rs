@@ -82,6 +82,7 @@ pub enum Action {
     NewLine,
     InputChar(char),
     Backspace,
+    ToggleHelp,
 }
 
 pub struct App {
@@ -108,6 +109,7 @@ pub struct App {
     pub recent_items: Vec<RecentItem>,
     pub selected_recent: usize,
     pub status_message: Option<String>,
+    pub show_help: bool,
     pub sql: SqlState,
     pub(crate) app_settings: AppSettings,
     pub(crate) settings_page: Option<settings::SettingsState>,

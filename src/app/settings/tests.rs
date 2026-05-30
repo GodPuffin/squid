@@ -5,7 +5,7 @@ fn settings_footer_hint_does_not_imply_q_quits_app() {
     let mut app = super::super::App::load(None).expect("load app");
     app.open_settings();
     let hint = app.settings_footer_hint();
-    assert!(hint.contains("Esc/q close"));
+    assert!(hint.contains("Esc close"));
     assert!(!hint.contains("q quit"));
 }
 

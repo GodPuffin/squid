@@ -1,14 +1,35 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use super::App;
+use super::super::home::AppStorage;
+use crate::app::{App, AppSettings};
+
+static ISOLATED_LOAD_ENV: Mutex<()> = Mutex::new(());
 
 #[test]
 fn loading_without_path_starts_on_home_screen() {
+    let storage = temp_db_path("home-load-isolated");
+    AppStorage::save_settings_at(
+        &storage,
+        &AppSettings {
+            auto_open_last_database: false,
+            ..AppSettings::default()
+        },
+    )
+    .expect("save settings");
+
+    let _guard = ISOLATED_LOAD_ENV.lock().expect("env lock");
+    // SAFETY: serialized by ISOLATED_LOAD_ENV for the duration of this test.
+    unsafe { std::env::set_var("SQUID_STATE_DB", &storage) };
     let app = App::load(None::<PathBuf>).expect("load app");
+    unsafe { std::env::remove_var("SQUID_STATE_DB") };
+    drop(_guard);
+
+    let _ = fs::remove_file(storage);
 
     assert!(app.is_home());
     assert!(app.path().is_none());
