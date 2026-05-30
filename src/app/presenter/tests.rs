@@ -88,6 +88,34 @@ fn home_footer_includes_settings_and_confirm_remove() {
 }
 
 #[test]
+fn help_unavailable_while_searching() {
+    let mut app = app_with_presenter_data("presenter-search-help");
+    app.open_search(SearchScope::CurrentTable).unwrap();
+    assert!(!app.help_available());
+    assert!(!app.footer_hint().contains("? help"));
+}
+
+#[test]
+fn detail_help_lists_delete_with_pending_changes() {
+    let mut app = app_with_presenter_data("presenter-detail-delete-help");
+    app.focus = crate::app::PaneFocus::Content;
+    app.content_view = crate::app::ContentView::Rows;
+    app.open_detail().unwrap();
+    if let Some(detail) = app.detail.as_mut() {
+        if let Some(field) = detail.fields.first_mut() {
+            field.draft_value.push('!');
+        }
+    }
+
+    let keys: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect();
+    assert!(keys.iter().any(|key| key == "d"));
+}
+
+#[test]
 fn detail_footer_hint_stays_compact() {
     let mut app = app_with_presenter_data("presenter-detail-footer");
     app.focus = crate::app::PaneFocus::Content;

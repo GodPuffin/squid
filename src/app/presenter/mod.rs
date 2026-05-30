@@ -99,6 +99,7 @@ impl App {
 
     pub fn help_available(&self) -> bool {
         !self.settings_open()
+            && self.search.is_none()
             && !(self.detail_is_editing()
                 || self.mode == AppMode::Sql && self.sql_focus() == super::SqlPane::Editor)
             && self.filter_modal_pane() != Some(FilterPane::Draft)
@@ -308,10 +309,7 @@ impl App {
             entries.push(entry("s", "Insert row"));
         }
 
-        if self.can_delete_detail_row()
-            && !self.detail.as_ref().is_some_and(|d| d.is_new_row)
-            && !self.detail_has_changes()
-        {
+        if self.can_delete_detail_row() && !self.detail.as_ref().is_some_and(|d| d.is_new_row) {
             entries.push(entry("d", "Delete row"));
         }
 
