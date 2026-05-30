@@ -47,7 +47,9 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     } else {
         sql::render(frame, app, layout);
     }
-    chrome::render_footer(frame, app, layout.footer);
+    if !app.overlay_modal_open() {
+        chrome::render_footer(frame, app, layout.footer);
+    }
     modals::render(frame, app, layout);
     if app.show_help {
         help::render(frame, app, frame.area());

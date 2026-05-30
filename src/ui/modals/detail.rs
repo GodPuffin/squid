@@ -204,33 +204,8 @@ fn render_header_bar(frame: &mut Frame, app: &App, area: Rect, theme: Theme) {
 }
 
 fn render_footer_bar(frame: &mut Frame, app: &App, area: Rect, theme: Theme) {
-    let is_new_row = app.detail.as_ref().is_some_and(|detail| detail.is_new_row);
-    let text = if app.detail_has_changes() {
-        if app.detail_is_editing() {
-            "Type to edit  Enter newline  Backspace delete  Esc stop editing"
-        } else if is_new_row {
-            "e edit field  s insert row  c discard  Up/Down field  Left/Right pane"
-        } else if app.can_delete_detail_row() {
-            "e edit field  s save row  c discard row edits  d delete row  Up/Down field  Left/Right pane  g follow foreign key"
-        } else {
-            "e edit field  s save row  c discard row edits  Up/Down field  Left/Right pane  g follow foreign key"
-        }
-    } else if app.detail_is_editing() {
-        "Type to edit  Enter newline  Backspace delete  Esc stop editing"
-    } else if is_new_row {
-        "e edit field  Enter edit focused value  s insert row  Up/Down field  Left/Right pane"
-    } else if app.detail_is_row_writable() {
-        if app.can_delete_detail_row() {
-            "e edit field  Enter edit focused value  d delete row  Up/Down field  Left/Right pane  g follow foreign key"
-        } else {
-            "e edit field  Enter edit focused value  Up/Down field  Left/Right pane  g follow foreign key"
-        }
-    } else {
-        "Read-only row  Up/Down field  Left/Right pane  g follow foreign key"
-    };
-
     frame.render_widget(
-        Paragraph::new(text)
+        Paragraph::new(app.footer_hint())
             .alignment(Alignment::Center)
             .style(theme.muted_style()),
         area,

@@ -40,9 +40,9 @@ fn content_title_includes_hidden_filter_and_sort_summaries() {
 fn footer_hint_is_compact_and_offers_help() {
     let mut app = app_with_presenter_data("presenter-footer");
     let hint = app.footer_hint();
-    assert!(hint.contains("Enter details"));
+    assert!(hint.contains("Enter"));
     assert!(hint.contains("? help"));
-    assert!(hint.len() < 80);
+    assert!(hint.len() < 60);
 
     app.modal = Some(ModalState {
         pane: ModalPane::Columns,
@@ -88,10 +88,22 @@ fn home_footer_includes_settings_and_confirm_remove() {
 }
 
 #[test]
+fn detail_footer_hint_stays_compact() {
+    let mut app = app_with_presenter_data("presenter-detail-footer");
+    app.focus = crate::app::PaneFocus::Content;
+    app.content_view = crate::app::ContentView::Rows;
+    app.open_detail().unwrap();
+    assert!(app.detail.is_some());
+    let hint = app.footer_hint();
+    assert!(hint.contains("? help"));
+    assert!(hint.len() < 60);
+}
+
+#[test]
 fn footer_hint_matches_current_table_search_mode() {
     let mut app = app_with_presenter_data("presenter-search-footer");
     app.open_search(SearchScope::CurrentTable).unwrap();
-    assert!(app.footer_hint().contains("Type query"));
+    assert!(app.footer_hint().contains("Type"));
 
     app.preview.total_rows = 2_001;
     app.search = Some(SearchState {
@@ -105,10 +117,10 @@ fn footer_hint_matches_current_table_search_mode() {
         submitted: true,
         loading: false,
     });
-    assert!(app.footer_hint().contains("Type query"));
+    assert!(app.footer_hint().contains("Type"));
 
     app.search.as_mut().unwrap().loading = true;
-    assert!(app.footer_hint().contains("Searching current table"));
+    assert!(app.footer_hint().contains("Searching table"));
     assert!(!app.footer_hint().contains("Esc close"));
 }
 

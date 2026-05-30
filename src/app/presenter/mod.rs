@@ -104,6 +104,10 @@ impl App {
             && self.filter_modal_pane() != Some(FilterPane::Draft)
     }
 
+    pub fn overlay_modal_open(&self) -> bool {
+        self.detail.is_some() || self.filter_modal.is_some() || self.modal.is_some()
+    }
+
     pub fn help_title(&self) -> &'static str {
         if self.is_home() {
             "Home Controls"
@@ -179,13 +183,13 @@ impl App {
     fn compact_footer_hint(&self) -> String {
         if self.is_home() {
             if self.pending_recent_removal.is_some() {
-                return "↑↓ select  Enter open  Del confirm".to_string();
+                return "↑↓  Enter  Del confirm".to_string();
             }
-            return "↑↓ select  Enter open  , settings".to_string();
+            return "↑↓  Enter  , settings".to_string();
         }
 
         if self.mode == AppMode::Sql {
-            return "Tab panes  F5 run".to_string();
+            return "Tab  F5 run".to_string();
         }
 
         if self.detail.is_some() {
@@ -193,23 +197,18 @@ impl App {
                 return "Esc done  Enter newline".to_string();
             }
             if self.detail_has_changes() {
-                let save = if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
-                    "s insert"
-                } else {
-                    "s save"
-                };
-                return format!("{save}  c discard  e edit");
+                return "e edit  ↑↓ field  ←→ panes".to_string();
             }
             if self.detail.as_ref().is_some_and(|d| d.is_new_row) {
                 return "e edit  s insert".to_string();
             }
             if self.detail_is_row_writable() && self.can_delete_detail_row() {
-                return "e edit  d delete  g follow".to_string();
+                return "e edit  d delete  g link".to_string();
             }
             if self.detail_is_row_writable() {
-                return "e edit  g follow".to_string();
+                return "e edit  g link".to_string();
             }
-            return "Read-only  g follow".to_string();
+            return "Read-only  g link".to_string();
         }
 
         if self.filter_modal.is_some() {
@@ -223,15 +222,15 @@ impl App {
         if let Some(search) = &self.search {
             if search.loading {
                 let scope = match search.scope {
-                    SearchScope::CurrentTable => "current table",
-                    SearchScope::AllTables => "all tables",
+                    SearchScope::CurrentTable => "table",
+                    SearchScope::AllTables => "all",
                 };
                 return format!("Searching {scope}…");
             }
-            return "Type query  ↑↓ select  Enter jump".to_string();
+            return "Type  ↑↓ select  Enter jump".to_string();
         }
 
-        "Tab panes  ↑↓ move  Enter details  , settings".to_string()
+        "Tab  ↑↓ move  Enter  , settings".to_string()
     }
 
     fn home_help_entries(&self) -> Vec<HelpEntry> {
