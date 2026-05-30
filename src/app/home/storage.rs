@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::app::settings::AppSettings;
 use crate::app::{AppMode, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
 use crate::db::FilterMode;
 
@@ -64,10 +65,11 @@ pub(crate) struct StoredSession {
 pub struct RecentStore;
 
 impl RecentStore {
-    const MAX_ITEMS: usize = 10;
-
     pub fn load() -> Result<Vec<RecentItem>> {
-        AppStorage::load_recent(Self::MAX_ITEMS)
+        let limit = crate::app::AppSettings::load()
+            .map(|settings| settings.recent_limit)
+            .unwrap_or(10);
+        AppStorage::load_recent(limit)
     }
 
     pub fn record(path: &Path) -> Result<Vec<RecentItem>> {
@@ -180,7 +182,10 @@ impl AppStorage {
         Ok(())
     }
 
-    #[cfg(test)]
+    pub fn last_opened_path() -> Result<Option<PathBuf>> {
+        Self::last_opened_path_at(&Self::storage_path()?)
+    }
+
     pub(crate) fn last_opened_path_at(storage_path: &Path) -> Result<Option<PathBuf>> {
         let conn = Self::open_at(storage_path)?;
         let bytes = conn
@@ -193,6 +198,85 @@ impl AppStorage {
         bytes
             .map(|value| path_from_storage_bytes(&value))
             .transpose()
+    }
+
+    pub fn load_settings() -> Result<AppSettings> {
+        Self::load_settings_at(&Self::storage_path()?)
+    }
+
+    pub fn save_settings(settings: &AppSettings) -> Result<()> {
+        Self::save_settings_at(&Self::storage_path()?, settings)
+    }
+
+    pub(crate) fn load_settings_at(storage_path: &Path) -> Result<AppSettings> {
+        let conn = Self::open_at(storage_path)?;
+        let mut settings = AppSettings::default();
+
+        let mut stmt = conn.prepare("SELECT key, value FROM app_settings")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for row in rows {
+            let (key, value) = row?;
+            match key.as_str() {
+                "mouse_enabled" => settings.mouse_enabled = parse_settings_bool(&value)?,
+                "restore_session_on_open" => {
+                    settings.restore_session_on_open = parse_settings_bool(&value)?;
+                }
+                "auto_open_last_database" => {
+                    settings.auto_open_last_database = parse_settings_bool(&value)?;
+                }
+                "recent_limit" => {
+                    settings.recent_limit = parse_settings_usize(&value, "recent_limit")?;
+                }
+                "sql_result_row_limit" => {
+                    settings.sql_result_row_limit =
+                        parse_settings_usize(&value, "sql_result_row_limit")?;
+                }
+                _ => {}
+            }
+        }
+
+        settings.recent_limit = settings.recent_limit.clamp(1, 100);
+        settings.sql_result_row_limit = settings.sql_result_row_limit.clamp(1, 100_000);
+
+        Ok(settings)
+    }
+
+    pub(crate) fn save_settings_at(storage_path: &Path, settings: &AppSettings) -> Result<()> {
+        let conn = Self::open_at(storage_path)?;
+        let pairs = [
+            (
+                "mouse_enabled",
+                settings_bool_to_storage(settings.mouse_enabled),
+            ),
+            (
+                "restore_session_on_open",
+                settings_bool_to_storage(settings.restore_session_on_open),
+            ),
+            (
+                "auto_open_last_database",
+                settings_bool_to_storage(settings.auto_open_last_database),
+            ),
+            ("recent_limit", settings.recent_limit.to_string()),
+            (
+                "sql_result_row_limit",
+                settings.sql_result_row_limit.to_string(),
+            ),
+        ];
+
+        let tx = conn.unchecked_transaction()?;
+        for (key, value) in pairs {
+            tx.execute(
+                "INSERT INTO app_settings(key, value)
+                 VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [key, value.as_str()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn load_session(path: &Path) -> Result<Option<StoredSession>> {
@@ -539,6 +623,10 @@ impl AppStorage {
                  mode TEXT NOT NULL,
                  value TEXT NOT NULL,
                  PRIMARY KEY(path, table_name, position)
+             );
+             CREATE TABLE IF NOT EXISTS app_settings(
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
              );",
         )?;
         Ok(conn)
@@ -631,7 +719,7 @@ fn env_path(name: &str) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-fn test_storage_path() -> PathBuf {
+pub(crate) fn test_storage_path() -> PathBuf {
     env::temp_dir().join(format!("squid-test-state-{}.db", process::id()))
 }
 
@@ -664,6 +752,24 @@ pub(crate) fn path_from_storage_bytes(bytes: &[u8]) -> Result<PathBuf> {
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
         .collect::<Vec<_>>();
     Ok(PathBuf::from(std::ffi::OsString::from_wide(&wide)))
+}
+
+fn parse_settings_bool(value: &str) -> Result<bool> {
+    match value {
+        "1" | "true" | "on" => Ok(true),
+        "0" | "false" | "off" => Ok(false),
+        other => anyhow::bail!("invalid boolean setting value: {other}"),
+    }
+}
+
+fn parse_settings_usize(value: &str, name: &str) -> Result<usize> {
+    value
+        .parse::<usize>()
+        .with_context(|| format!("invalid {name} setting value: {value}"))
+}
+
+fn settings_bool_to_storage(value: bool) -> String {
+    if value { "1" } else { "0" }.to_string()
 }
 
 fn unix_timestamp() -> i64 {

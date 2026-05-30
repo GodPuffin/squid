@@ -37,7 +37,7 @@ impl App {
 
     pub(super) fn handle_modal(&mut self, action: Action) -> Result<()> {
         match action {
-            Action::CloseModal | Action::Quit | Action::OpenConfig => {
+            Action::CloseModal | Action::Quit | Action::OpenConfig | Action::OpenSettings => {
                 self.modal = None;
             }
             Action::OpenFilters => {

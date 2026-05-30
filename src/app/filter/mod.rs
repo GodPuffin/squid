@@ -58,7 +58,7 @@ impl App {
             Action::CloseModal | Action::Quit | Action::OpenFilters => {
                 self.filter_modal = None;
             }
-            Action::OpenConfig => {
+            Action::OpenConfig | Action::OpenSettings => {
                 self.filter_modal = None;
                 self.open_config_modal();
             }

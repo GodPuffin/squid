@@ -81,6 +81,7 @@ impl App {
             | Action::PageUp
             | Action::PageDown
             | Action::OpenConfig
+            | Action::OpenSettings
             | Action::ToggleItem
             | Action::Delete
             | Action::Clear

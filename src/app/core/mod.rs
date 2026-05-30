@@ -15,6 +15,15 @@ use super::{Action, App, AppMode, ContentView, PaneFocus};
 
 impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
+        if matches!(action, Action::OpenSettings) {
+            self.open_settings();
+            return Ok(());
+        }
+
+        if self.settings_open() {
+            return self.handle_settings(action);
+        }
+
         if self.is_home() {
             return self.handle_home(action);
         }
@@ -87,7 +96,8 @@ impl App {
             | Action::InputChar(_)
             | Action::Backspace
             | Action::SwitchToBrowse
-            | Action::SwitchToSql => {}
+            | Action::SwitchToSql
+            | Action::OpenSettings => {}
         }
 
         Ok(())
@@ -154,7 +164,8 @@ impl App {
     }
 
     pub fn request_quit(&mut self) -> Result<bool> {
-        if self.detail.is_some()
+        if self.settings_open()
+            || self.detail.is_some()
             || self.filter_modal.is_some()
             || self.modal.is_some()
             || self.search.is_some()
@@ -256,6 +267,7 @@ impl App {
             Action::None
             | Action::ToggleView
             | Action::OpenConfig
+            | Action::OpenSettings
             | Action::CloseModal
             | Action::ToggleItem
             | Action::Clear

@@ -29,6 +29,7 @@ impl App {
             | Action::PageUp
             | Action::PageDown
             | Action::OpenConfig
+            | Action::OpenSettings
             | Action::Delete
             | Action::Clear
             | Action::Reload

@@ -29,9 +29,9 @@ fn sql_execute_reloads_after_insert_returning() {
 
 #[test]
 fn sql_rows_summary_marks_truncation() {
-    assert_eq!(sql_rows_summary(200, false), "Returned 200 row(s)");
+    assert_eq!(sql_rows_summary(200, false, 200), "Returned 200 row(s)");
     assert_eq!(
-        sql_rows_summary(200, true),
+        sql_rows_summary(200, true, 200),
         "Returned 200 row(s) (truncated at 200)"
     );
 }

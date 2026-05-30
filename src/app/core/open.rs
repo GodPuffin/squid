@@ -40,7 +40,11 @@ impl App {
         self.sql.column_cache.clear();
         self.sql_invalidate_completion_cache();
         self.reset_content_position();
-        self.restore_session_state(stored_session)?;
+        if self.app_settings.restore_session_on_open {
+            self.restore_session_state(stored_session)?;
+        } else {
+            self.restore_session_state(None)?;
+        }
         match RecentStore::record(&absolute_path) {
             Ok(items) => {
                 self.recent_items = items;
@@ -112,7 +116,7 @@ impl App {
         }
     }
 
-    pub(super) fn refresh_home_selection(&mut self) {
+    pub(in crate::app) fn refresh_home_selection(&mut self) {
         if self.recent_items.is_empty() {
             self.selected_recent = 0;
             self.focus = PaneFocus::Content;
