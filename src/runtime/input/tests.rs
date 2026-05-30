@@ -100,7 +100,36 @@ fn browse_rows_accepts_d_for_delete_on_writable_table_with_rows() {
         .expect("seed");
     drop(conn);
 
-    let app = App::load(path.clone()).expect("load app");
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    assert!(app.can_delete_row());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::DeleteRow
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn browse_rows_ignores_d_when_tables_pane_focused() {
+    let path = temp_db_path("browse-delete-tables-focus");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_tables();
+    assert!(!app.can_delete_row());
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::None
+    );
+
+    app.focus_content();
     assert!(app.can_delete_row());
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),

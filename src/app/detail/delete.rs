@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::{App, ContentView, DetailMessage};
+use super::super::{App, ContentView, DetailMessage, PaneFocus};
 
 impl App {
     pub(in crate::app) fn delete_selected_row(&mut self) -> Result<()> {
@@ -32,7 +32,10 @@ impl App {
         let rowid = if let Some(rowid) = self.detail.as_ref().and_then(|detail| detail.rowid) {
             rowid
         } else {
-            if self.content_view != ContentView::Rows || self.preview.total_rows == 0 {
+            if self.focus != PaneFocus::Content
+                || self.content_view != ContentView::Rows
+                || self.preview.total_rows == 0
+            {
                 return Ok(());
             }
             let Some(record) = self.db_ref()?.row_record_at_offset(

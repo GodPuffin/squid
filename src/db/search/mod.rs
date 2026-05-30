@@ -439,25 +439,6 @@ impl Database {
         }))
     }
 
-    fn selectable_rowid_alias(&self, table_name: &str) -> Result<Option<&'static str>> {
-        let Some(rowid_alias) = self.rowid_alias(table_name)? else {
-            return Ok(None);
-        };
-
-        let sql = format!(
-            "SELECT {rowid_alias}
-             FROM {safe_table_name}
-             LIMIT 1",
-            safe_table_name = quote_table_name(table_name)
-        );
-
-        if self.conn.prepare(&sql).is_ok() {
-            Ok(Some(rowid_alias))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn scan_search_rows_chunk(
         &self,
         plan: &SearchScanPlan,

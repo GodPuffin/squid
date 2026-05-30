@@ -1,4 +1,4 @@
-use super::super::{App, ContentView, DetailField, DetailPane};
+use super::super::{App, ContentView, DetailField, DetailPane, PaneFocus};
 use super::text::{detail_value_text, wrapped_line_count};
 
 impl App {
@@ -52,7 +52,8 @@ impl App {
     }
 
     pub fn can_delete_row(&self) -> bool {
-        self.content_view == ContentView::Rows
+        self.focus == PaneFocus::Content
+            && self.content_view == ContentView::Rows
             && self.selected_table_name().is_some()
             && self.preview.total_rows > 0
             && self.table_has_rowid_alias()
@@ -71,7 +72,7 @@ impl App {
             .and_then(|table_name| {
                 self.db
                     .as_ref()
-                    .and_then(|db| db.rowid_alias(table_name).ok().flatten())
+                    .and_then(|db| db.selectable_rowid_alias(table_name).ok().flatten())
             })
             .is_some()
     }

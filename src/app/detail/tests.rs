@@ -353,6 +353,7 @@ fn without_rowid_tables_open_as_read_only_details() {
     let detail = app.detail.as_ref().unwrap();
     assert_eq!(detail.rowid, None);
     assert!(!app.detail_is_row_writable());
+    assert!(!app.can_delete_row());
     assert!(
         detail
             .message
@@ -361,6 +362,34 @@ fn without_rowid_tables_open_as_read_only_details() {
             .text
             .contains("Read-only row")
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_from_browse_is_noop_when_tables_pane_focused() {
+    let path = temp_db_path("detail-delete-tables-focus");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute(
+        "INSERT INTO items(label) VALUES ('alpha'), ('beta')",
+        [],
+    )
+    .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_tables();
+    app.selected_row = 1;
+
+    app.handle(Action::DeleteRow).unwrap();
+
+    assert_eq!(app.preview.total_rows, 2);
 
     let _ = fs::remove_file(path);
 }
