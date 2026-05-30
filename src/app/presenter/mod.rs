@@ -77,7 +77,12 @@ impl App {
         }
 
         if self.is_home() {
-            "up/down move  enter open  , settings  del remove  r reload  q quit".to_string()
+            if self.pending_recent_removal.is_some() {
+                "up/down move  enter open  , settings  del confirm remove  r reload  q quit"
+                    .to_string()
+            } else {
+                "up/down move  enter open  , settings  del remove  r reload  q quit".to_string()
+            }
         } else if self.mode == AppMode::Sql {
             "Tab cycle panes  F5 Run  Enter newline/apply completion".to_string()
         } else if self.detail.is_some() {
@@ -385,6 +390,10 @@ impl App {
         self.home_logo_lines()
     }
 
+    pub fn format_cell_preview(&self, value: &str) -> String {
+        truncate_cell_preview(value, self.app_settings.cell_preview_max_chars)
+    }
+
     pub(crate) fn schema_cache_key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.is_home().hash(&mut hasher);
@@ -409,6 +418,20 @@ impl App {
 
 fn empty_as_unknown(value: &str) -> &str {
     if value.is_empty() { "UNKNOWN" } else { value }
+}
+
+pub(crate) fn truncate_cell_preview(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return value.to_string();
+    }
+
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_string();
+    }
+
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{truncated}…")
 }
 
 fn format_create_sql(sql: &str) -> Vec<String> {

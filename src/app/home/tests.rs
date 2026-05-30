@@ -2,7 +2,9 @@
 use std::os::unix::ffi::OsStringExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::app::{AppMode, AppSettings, ContentView, PaneFocus, SqlHistoryEntry, SqlPane};
+use crate::app::{
+    AppMode, AppSettings, ContentView, DefaultBrowseView, PaneFocus, SqlHistoryEntry, SqlPane,
+};
 use crate::db::FilterMode;
 
 use super::{
@@ -348,6 +350,15 @@ fn app_settings_round_trip_through_storage() {
         auto_open_last_database: false,
         recent_limit: 25,
         sql_result_row_limit: 500,
+        confirm_before_remove_recent: false,
+        default_browse_view: DefaultBrowseView::Schema,
+        sql_history_size: 25,
+        live_table_search: false,
+        show_row_numbers: false,
+        cell_preview_max_chars: 80,
+        double_click_interval_ms: 750,
+        restore_cursor_on_startup: false,
+        clear_session_on_quit: true,
     };
 
     AppStorage::save_settings_at(&storage, &settings).unwrap();

@@ -82,8 +82,9 @@ pub fn handle_mouse_event(
 }
 
 fn handle_search_double_click(app: &mut App, state: &mut MouseState, now: Instant) -> Result<()> {
+    let threshold = app.app_settings.double_click_interval();
     if let Some(selected) = app.search.as_ref().map(|search| search.selected_result) {
-        if is_double_click(state.last_search_click, selected, now) {
+        if is_double_click(state.last_search_click, selected, now, threshold) {
             app.handle(Action::Confirm)?;
             state.last_search_click = None;
         } else {
@@ -94,13 +95,14 @@ fn handle_search_double_click(app: &mut App, state: &mut MouseState, now: Instan
 }
 
 fn handle_row_double_click(app: &mut App, state: &mut MouseState, now: Instant) -> Result<()> {
+    let threshold = app.app_settings.double_click_interval();
     let (selected, previous_click) = if app.is_home() {
         (app.selected_recent, &mut state.last_home_click)
     } else {
         (app.selected_row, &mut state.last_table_row_click)
     };
 
-    if is_double_click(*previous_click, selected, now) {
+    if is_double_click(*previous_click, selected, now, threshold) {
         app.handle(Action::Confirm)?;
         *previous_click = None;
     } else {
@@ -114,8 +116,9 @@ fn handle_sql_history_double_click(
     state: &mut MouseState,
     now: Instant,
 ) -> Result<()> {
+    let threshold = app.app_settings.double_click_interval();
     let selected = app.sql.selected_history;
-    if is_double_click(state.last_sql_history_click, selected, now) {
+    if is_double_click(state.last_sql_history_click, selected, now, threshold) {
         app.handle(Action::Confirm)?;
         state.last_sql_history_click = None;
     } else {
@@ -124,9 +127,14 @@ fn handle_sql_history_double_click(
     Ok(())
 }
 
-fn is_double_click(previous: Option<(usize, Instant)>, selected: usize, now: Instant) -> bool {
+pub(crate) fn is_double_click(
+    previous: Option<(usize, Instant)>,
+    selected: usize,
+    now: Instant,
+    threshold: Duration,
+) -> bool {
     previous.is_some_and(|(last_index, last_time)| {
-        last_index == selected && now.duration_since(last_time) <= Duration::from_millis(500)
+        last_index == selected && now.duration_since(last_time) <= threshold
     })
 }
 

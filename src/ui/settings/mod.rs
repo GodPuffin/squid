@@ -28,6 +28,9 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         .style(Style::default().add_modifier(Modifier::BOLD));
     frame.render_widget(title, chunks[0]);
 
+    let visible_rows = chunks[1].height.saturating_sub(2) as usize;
+    let scroll_offset = app.settings_scroll_offset(visible_rows);
+
     let items: Vec<ListItem<'_>> = app
         .settings_lines()
         .into_iter()
@@ -47,7 +50,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         })
         .collect();
 
-    let mut state = ListState::default();
+    let mut state = ListState::default().with_offset(scroll_offset);
     if let Some(selected) = app.settings_selected_index() {
         state.select(Some(selected));
     }
