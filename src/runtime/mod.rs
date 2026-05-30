@@ -62,7 +62,7 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
                 }
                 app.handle(action)?;
             }
-            Event::Mouse(event) => {
+            Event::Mouse(event) if !app.settings_open() => {
                 let should_quit = mouse::handle_mouse_event(
                     &mut app,
                     &layout,

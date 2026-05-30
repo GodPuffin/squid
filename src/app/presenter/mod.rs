@@ -81,6 +81,10 @@ impl App {
             return "Esc or ? close help".to_string();
         }
 
+        if self.settings_open() {
+            return self.settings_footer_hint();
+        }
+
         let compact = self.compact_footer_hint();
         if self.help_available() {
             if compact.is_empty() {
@@ -94,8 +98,9 @@ impl App {
     }
 
     pub fn help_available(&self) -> bool {
-        !(self.detail_is_editing()
-            || self.mode == AppMode::Sql && self.sql_focus() == super::SqlPane::Editor)
+        !self.settings_open()
+            && !(self.detail_is_editing()
+                || self.mode == AppMode::Sql && self.sql_focus() == super::SqlPane::Editor)
             && self.filter_modal_pane() != Some(FilterPane::Draft)
     }
 
@@ -119,18 +124,13 @@ impl App {
 
     pub fn help_entries(&self) -> Vec<HelpEntry> {
         if self.is_home() {
-            return vec![
-                entry("↑/↓", "Move selection"),
-                entry("Enter", "Open database"),
-                entry("Del", "Remove from recents"),
-                entry("r", "Reload recents"),
-                entry("q", "Quit"),
-            ];
+            return self.home_help_entries();
         }
 
         if self.mode == AppMode::Sql {
             return vec![
                 entry("1 / 2", "Browse / SQL mode"),
+                entry(",", "Settings"),
                 entry("Tab", "Cycle panes"),
                 entry("F5", "Run query"),
                 entry("Enter", "New line / apply completion"),
@@ -178,7 +178,10 @@ impl App {
 
     fn compact_footer_hint(&self) -> String {
         if self.is_home() {
-            return "↑↓ select  Enter open".to_string();
+            if self.pending_recent_removal.is_some() {
+                return "↑↓ select  Enter open  Del confirm".to_string();
+            }
+            return "↑↓ select  Enter open  , settings".to_string();
         }
 
         if self.mode == AppMode::Sql {
@@ -228,12 +231,30 @@ impl App {
             return "Type query  ↑↓ select  Enter jump".to_string();
         }
 
-        "Tab panes  ↑↓ move  Enter details".to_string()
+        "Tab panes  ↑↓ move  Enter details  , settings".to_string()
+    }
+
+    fn home_help_entries(&self) -> Vec<HelpEntry> {
+        let delete_label = if self.pending_recent_removal.is_some() {
+            "Confirm remove from recents"
+        } else {
+            "Remove from recents"
+        };
+
+        vec![
+            entry("↑/↓", "Move selection"),
+            entry("Enter", "Open database"),
+            entry(",", "Settings"),
+            entry("Del", delete_label),
+            entry("r", "Reload recents"),
+            entry("q", "Quit"),
+        ]
     }
 
     fn browse_help_entries(&self) -> Vec<HelpEntry> {
         let mut entries = vec![
             entry("1 / 2", "Browse / SQL mode"),
+            entry(",", "Settings"),
             entry("Tab / ←/→", "Switch panes"),
             entry("↑/↓", "Move selection"),
             entry("Enter", "Open row details"),
@@ -247,10 +268,10 @@ impl App {
         ];
 
         if self.can_add_new_row() {
-            entries.insert(4, entry("a", "New row"));
+            entries.insert(5, entry("a", "New row"));
         }
         if self.can_delete_row() {
-            let idx = if self.can_add_new_row() { 5 } else { 4 };
+            let idx = if self.can_add_new_row() { 6 } else { 5 };
             entries.insert(idx, entry("d", "Delete row"));
         }
 
@@ -586,8 +607,13 @@ impl App {
         self.home_logo_lines()
     }
 
+    pub fn format_cell_preview(&self, value: &str) -> String {
+        truncate_cell_preview(value, self.app_settings.cell_preview_max_chars)
+    }
+
     pub(crate) fn schema_cache_key(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
+        self.app_settings.color_scheme.hash(&mut hasher);
         self.is_home().hash(&mut hasher);
         self.selected_table.hash(&mut hasher);
         self.tables.len().hash(&mut hasher);
@@ -617,6 +643,20 @@ fn entry(key: impl Into<String>, description: impl Into<String>) -> HelpEntry {
         key: key.into(),
         description: description.into(),
     }
+}
+
+pub(crate) fn truncate_cell_preview(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return value.to_string();
+    }
+
+    let char_count = value.chars().count();
+    if char_count <= max_chars {
+        return value.to_string();
+    }
+
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{truncated}…")
 }
 
 fn format_create_sql(sql: &str) -> Vec<String> {

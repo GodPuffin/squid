@@ -14,6 +14,10 @@ pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
         return Action::ToggleHelp;
     }
 
+    if app.settings_open() {
+        return settings_action(key.code);
+    }
+
     if app.mode == AppMode::Sql {
         return sql_action(app, key);
     }
@@ -123,8 +127,20 @@ fn modal_action(key: KeyCode) -> Action {
     }
 }
 
+fn settings_action(key: KeyCode) -> Action {
+    match key {
+        KeyCode::Esc | KeyCode::Char('q') => Action::CloseModal,
+        KeyCode::Up => Action::MoveUp,
+        KeyCode::Down => Action::MoveDown,
+        KeyCode::Char(' ') => Action::ToggleItem,
+        KeyCode::Enter => Action::Confirm,
+        _ => Action::None,
+    }
+}
+
 fn browse_action(app: &App, key: KeyCode) -> Action {
     match key {
+        KeyCode::Char(',') => Action::OpenSettings,
         KeyCode::Char('1') => Action::SwitchToBrowse,
         KeyCode::Char('2') => Action::SwitchToSql,
         KeyCode::BackTab => Action::ReverseFocus,

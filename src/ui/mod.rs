@@ -4,12 +4,14 @@ mod help;
 mod layout;
 mod modals;
 mod search;
+mod settings;
 mod sql;
 mod syntax;
 mod tables;
 mod widgets;
 
 use ratatui::Frame;
+use ratatui::widgets::Block;
 
 use crate::app::App;
 
@@ -20,6 +22,17 @@ pub use layout::{
 pub(crate) use modals::detail::action_rects as detail_action_rects;
 
 pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
+    let theme = app.theme();
+    if let Some(background) = theme.background {
+        frame.render_widget(Block::default().style(theme.fill_style()), frame.area());
+        let _ = background;
+    }
+
+    if app.settings_open() {
+        settings::render(frame, app, layout);
+        return;
+    }
+
     if app.is_home() {
         content::render(frame, app, layout);
         if app.show_help {

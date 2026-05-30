@@ -9,6 +9,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
     let Some(modal_layout) = &layout.modal else {
         return;
     };
+    let theme = app.theme();
 
     render_shell(
         frame,
@@ -18,6 +19,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         "Space toggles | Enter adds current candidate | Delete removes active sort | c clears all",
         modal_layout.header,
         modal_layout.footer,
+        theme,
     );
 
     let (columns_idx, sort_columns_idx, sort_active_idx) = app.modal_selected_indices();
@@ -29,6 +31,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.modal_column_lines(),
         columns_idx,
         app.modal_pane() == Some(ModalPane::Columns),
+        theme,
     );
     render_list(
         frame,
@@ -37,6 +40,7 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.modal_sort_column_lines(),
         sort_columns_idx,
         app.modal_pane() == Some(ModalPane::SortColumns),
+        theme,
     );
     render_list(
         frame,
@@ -45,5 +49,6 @@ pub fn render(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
         &app.modal_sort_active_lines(),
         sort_active_idx,
         app.modal_pane() == Some(ModalPane::SortActive),
+        theme,
     );
 }

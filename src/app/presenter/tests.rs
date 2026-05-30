@@ -70,6 +70,17 @@ fn help_entries_cover_browse_actions() {
     assert!(keys.iter().any(|key| key.contains("Enter")));
     assert!(keys.iter().any(|key| key.contains('f')));
     assert!(keys.iter().any(|key| key.contains('m')));
+    assert!(keys.iter().any(|key| key.contains(',')));
+}
+
+#[test]
+fn home_footer_includes_settings_and_confirm_remove() {
+    let mut app = App::load(None).unwrap();
+    app.recent_items.clear();
+    assert!(app.footer_hint().contains(", settings"));
+
+    app.pending_recent_removal = Some(std::env::temp_dir().join("missing.db"));
+    assert!(app.footer_hint().contains("Del confirm"));
 }
 
 #[test]
@@ -169,4 +180,13 @@ fn temp_db_path(label: &str) -> PathBuf {
         .expect("clock")
         .as_nanos();
     std::env::temp_dir().join(format!("squid-presenter-{label}-{stamp}.sqlite"))
+}
+
+#[test]
+fn truncate_cell_preview_respects_limit() {
+    use super::truncate_cell_preview;
+
+    assert_eq!(truncate_cell_preview("hello", 0), "hello");
+    assert_eq!(truncate_cell_preview("hello", 10), "hello");
+    assert_eq!(truncate_cell_preview("hello world", 5), "hello…");
 }

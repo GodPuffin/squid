@@ -1,22 +1,26 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::App;
 
 use super::layout::centered_rect;
-use super::modals::shared::overlay_border_style;
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme();
     let overlay = centered_rect(area, 52, 62);
     frame.render_widget(Clear, overlay);
+
+    if theme.background.is_some() {
+        frame.render_widget(Block::default().style(theme.fill_style()), overlay);
+    }
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(app.help_title())
-        .border_style(overlay_border_style());
+        .border_style(theme.overlay_border_style())
+        .style(theme.fill_style());
     let inner = block.inner(overlay);
     frame.render_widget(block, overlay);
 
@@ -32,11 +36,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::styled(
                     format!("{:>14}  ", entry.key),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    theme.emphasis_style(),
                 ),
-                Span::raw(&entry.description),
+                Span::styled(entry.description.as_str(), theme.fg_style()),
             ])
         })
         .collect();
@@ -46,6 +48,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let footer = Paragraph::new("Esc or ? close")
         .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Gray));
+        .style(theme.muted_weak_style());
     frame.render_widget(footer, rows[1]);
 }

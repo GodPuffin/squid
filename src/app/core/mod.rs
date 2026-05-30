@@ -17,11 +17,24 @@ impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
         if matches!(action, Action::ToggleHelp) {
             self.show_help = !self.show_help;
+            if self.show_help {
+                self.settings_page = None;
+            }
             return Ok(());
         }
 
         if self.show_help {
             return Ok(());
+        }
+
+        if matches!(action, Action::OpenSettings) {
+            self.show_help = false;
+            self.open_settings();
+            return Ok(());
+        }
+
+        if self.settings_open() {
+            return self.handle_settings(action);
         }
 
         if self.is_home() {
@@ -97,6 +110,7 @@ impl App {
             | Action::Backspace
             | Action::SwitchToBrowse
             | Action::SwitchToSql
+            | Action::OpenSettings
             | Action::ToggleHelp => {}
         }
 
@@ -164,7 +178,8 @@ impl App {
     }
 
     pub fn request_quit(&mut self) -> Result<bool> {
-        if self.detail.is_some()
+        if self.settings_open()
+            || self.detail.is_some()
             || self.filter_modal.is_some()
             || self.modal.is_some()
             || self.search.is_some()
@@ -266,6 +281,7 @@ impl App {
             Action::None
             | Action::ToggleView
             | Action::OpenConfig
+            | Action::OpenSettings
             | Action::CloseModal
             | Action::ToggleItem
             | Action::Clear

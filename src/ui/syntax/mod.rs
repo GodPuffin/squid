@@ -1,7 +1,8 @@
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
-pub(crate) fn highlight_sql_line(line: &str) -> Vec<Span<'_>> {
+use crate::theme::Theme;
+
+pub(crate) fn highlight_sql_line(line: &str, theme: Theme) -> Vec<Span<'_>> {
     let mut spans = Vec::new();
     let chars = line.chars().collect::<Vec<_>>();
     let mut byte_indices = line.char_indices().map(|(idx, _)| idx).collect::<Vec<_>>();
@@ -13,7 +14,7 @@ pub(crate) fn highlight_sql_line(line: &str) -> Vec<Span<'_>> {
         if ch == '-' && chars.get(index + 1) == Some(&'-') {
             spans.push(Span::styled(
                 &line[byte_indices[index]..],
-                Style::default().fg(Color::DarkGray),
+                theme.syntax_comment_style(),
             ));
             break;
         }
@@ -29,7 +30,7 @@ pub(crate) fn highlight_sql_line(line: &str) -> Vec<Span<'_>> {
             }
             spans.push(Span::styled(
                 &line[byte_indices[start]..byte_indices[index]],
-                Style::default().fg(Color::LightGreen),
+                theme.syntax_string_style(),
             ));
             continue;
         }
@@ -41,7 +42,7 @@ pub(crate) fn highlight_sql_line(line: &str) -> Vec<Span<'_>> {
             }
             spans.push(Span::styled(
                 &line[byte_indices[start]..byte_indices[index]],
-                Style::default().fg(Color::LightMagenta),
+                theme.syntax_number_style(),
             ));
             continue;
         }
@@ -56,11 +57,9 @@ pub(crate) fn highlight_sql_line(line: &str) -> Vec<Span<'_>> {
             let token = &line[byte_indices[start]..byte_indices[index]];
             let upper = token.to_uppercase();
             let style = if is_sql_keyword(&upper) {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                theme.syntax_keyword_style()
             } else {
-                Style::default().fg(Color::White)
+                theme.syntax_ident_style()
             };
             spans.push(Span::styled(token, style));
             continue;

@@ -6,6 +6,7 @@ mod modal;
 mod navigation;
 mod presenter;
 mod search;
+mod settings;
 mod sql;
 mod state;
 mod table_config;
@@ -17,6 +18,8 @@ use std::path::PathBuf;
 use crate::db::{Database, DeferredSearchWork, RowPreview, TableDetails, TableSummary};
 pub use home::{RecentItem, RecentStore};
 
+pub use crate::theme::ColorScheme;
+pub use settings::{AppSettings, DefaultBrowseView};
 pub use state::{
     AppMode, DetailField, DetailForeignTarget, DetailMessage, DetailPane, DetailState,
     FilterModalState, FilterPane, ModalPane, ModalState, SearchScope, SearchState,
@@ -59,6 +62,7 @@ pub enum Action {
     PageUp,
     PageDown,
     OpenConfig,
+    OpenSettings,
     CloseModal,
     ToggleItem,
     Confirm,
@@ -107,12 +111,23 @@ pub struct App {
     pub status_message: Option<String>,
     pub show_help: bool,
     pub sql: SqlState,
+    pub(crate) app_settings: AppSettings,
+    pub(crate) settings_page: Option<settings::SettingsState>,
+    pub(crate) pending_recent_removal: Option<PathBuf>,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
 }
 
+impl App {
+    pub fn theme(&self) -> crate::theme::Theme {
+        crate::theme::Theme::from_scheme(self.app_settings.color_scheme)
+    }
+}
+
 impl Drop for App {
     fn drop(&mut self) {
-        let _ = self.persist_session_state();
+        if !self.app_settings.clear_session_on_quit {
+            let _ = self.persist_session_state();
+        }
     }
 }
