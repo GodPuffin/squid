@@ -15,6 +15,7 @@
 
 - Insert new rows from browse (`a`) or the detail modal.
 - Delete rows from browse (`d`) or the detail modal, with guards for read-only databases, missing rowid, and unsaved edits.
+- Blob fields show a hex dump and optional UTF-8 preview in the detail modal (read-only).
 
 ### Help and UX
 
