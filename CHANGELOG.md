@@ -20,3 +20,9 @@
 
 - Context-sensitive help overlay (`?`) on home, browse, detail, search, SQL, and settings.
 - Compact footer hints; modal footers no longer duplicate control text.
+
+### CLI
+
+- `--readonly` — open database read-only.
+- `--scheme <name>` — set initial color scheme.
+- `--no-session` — skip session restore and persist for this run.

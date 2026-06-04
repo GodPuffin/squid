@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 
+use crate::cli::Cli;
 use crate::db::RowPreview;
+use crate::theme::parse_color_scheme;
 
 use super::super::{
     App, AppMode, AppSettings, ContentView, PaneFocus, RecentStore, SqlPane, SqlResultState,
@@ -11,9 +11,13 @@ use super::super::{
 };
 
 impl App {
-    pub fn load(path: impl Into<Option<PathBuf>>) -> Result<Self> {
-        let path = path.into();
-        let app_settings = AppSettings::load().unwrap_or_default();
+    pub fn load(cli: impl Into<Cli>) -> Result<Self> {
+        let cli = cli.into();
+        let mut app_settings = AppSettings::load().unwrap_or_default();
+        if let Some(scheme) = &cli.scheme {
+            app_settings.color_scheme = parse_color_scheme(scheme)?;
+        }
+
         let (recent_items, status_message) = match RecentStore::load(app_settings.recent_limit) {
             Ok(items) => (items, None),
             Err(error) => (Vec::new(), Some(format!("Could not load recents: {error}"))),
@@ -50,9 +54,11 @@ impl App {
             pending_recent_removal: None,
             configs: std::collections::HashMap::new(),
             schema_lines_cache: std::cell::RefCell::new(None),
+            open_readonly: cli.readonly,
+            skip_session: cli.no_session,
         };
 
-        let startup_path = path.or_else(|| {
+        let startup_path = cli.path.or_else(|| {
             if !app.app_settings.auto_open_last_database {
                 return None;
             }

@@ -116,6 +116,8 @@ pub struct App {
     pub(crate) pending_recent_removal: Option<PathBuf>,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
+    pub(crate) open_readonly: bool,
+    pub(crate) skip_session: bool,
 }
 
 impl App {
@@ -126,8 +128,9 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        if !self.app_settings.clear_session_on_quit {
-            let _ = self.persist_session_state();
+        if self.skip_session || self.app_settings.clear_session_on_quit {
+            return;
         }
+        let _ = self.persist_session_state();
     }
 }

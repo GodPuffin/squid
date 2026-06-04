@@ -75,6 +75,26 @@ fn table_writability_is_reported_per_attached_schema() {
     let _ = fs::remove_file(attached_path);
 }
 
+#[test]
+fn open_readonly_rejects_missing_database() {
+    let path = temp_db_path("missing-readonly");
+    assert!(Database::open_readonly(&path).is_err());
+}
+
+#[test]
+fn open_readonly_opens_existing_database() {
+    let path = temp_db_path("existing-readonly");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE t(id INTEGER PRIMARY KEY)", [])
+        .expect("create table");
+    drop(conn);
+
+    let db = Database::open_readonly(&path).expect("open read-only");
+    assert!(!db.table_is_writable("main.t").expect("writable check"));
+
+    let _ = fs::remove_file(path);
+}
+
 fn temp_db_path(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -2,7 +2,6 @@ mod input;
 mod mouse;
 mod terminal;
 
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -10,17 +9,18 @@ use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::{Action, App};
+use crate::cli::Cli;
 use crate::ui::LayoutInfo;
 
-pub fn run(path: Option<PathBuf>) -> Result<()> {
+pub fn run(cli: Cli) -> Result<()> {
     let mut terminal = terminal::setup_terminal()?;
-    let result = run_loop(&mut terminal, path);
+    let result = run_loop(&mut terminal, cli);
     terminal::restore_terminal(&mut terminal)?;
     result
 }
 
-fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> Result<()> {
-    let mut app = App::load(path)?;
+fn run_loop(terminal: &mut terminal::TerminalHandle, cli: Cli) -> Result<()> {
+    let mut app = App::load(cli)?;
     let mut mouse_state = mouse::MouseState::default();
 
     loop {

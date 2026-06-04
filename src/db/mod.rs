@@ -140,17 +140,32 @@ pub struct Database {
 
 impl Database {
     pub fn open(path: &Path) -> Result<Self> {
-        let read_write_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI;
-        let conn = match Connection::open_with_flags(path, read_write_flags) {
-            Ok(conn) => conn,
-            Err(read_write_err) => {
-                let read_only_flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
-                Connection::open_with_flags(path, read_only_flags).with_context(|| {
-                    format!(
-                        "failed to open database {} for read-write or read-only access (read-write attempt failed: {read_write_err})",
-                        path.display()
-                    )
-                })?
+        Self::open_with_options(path, false)
+    }
+
+    pub fn open_readonly(path: &Path) -> Result<Self> {
+        Self::open_with_options(path, true)
+    }
+
+    fn open_with_options(path: &Path, force_readonly: bool) -> Result<Self> {
+        let conn = if force_readonly {
+            let read_only_flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+            Connection::open_with_flags(path, read_only_flags)
+                .with_context(|| format!("failed to open database {} read-only", path.display()))?
+        } else {
+            let read_write_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI;
+            match Connection::open_with_flags(path, read_write_flags) {
+                Ok(conn) => conn,
+                Err(read_write_err) => {
+                    let read_only_flags =
+                        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+                    Connection::open_with_flags(path, read_only_flags).with_context(|| {
+                        format!(
+                            "failed to open database {} for read-write or read-only access (read-write attempt failed: {read_write_err})",
+                            path.display()
+                        )
+                    })?
+                }
             }
         };
         Ok(Self {
