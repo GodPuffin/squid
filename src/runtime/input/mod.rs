@@ -57,7 +57,9 @@ fn detail_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('g') => Action::FollowLink,
         KeyCode::Char('e') => Action::EditDetail,
         KeyCode::Char('s') => Action::SaveDetail,
-        KeyCode::Char('d') if app.can_delete_detail_row() => Action::DeleteRow,
+        KeyCode::Char('d') if app.detail.is_some() && app.detail_database_is_writable() => {
+            Action::DeleteRow
+        }
         KeyCode::Char('c') => Action::DiscardDetail,
         KeyCode::Enter
             if app.detail_selected_field_is_editable()
@@ -159,13 +161,21 @@ fn browse_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('a') if app.content_view == ContentView::Rows && app.can_add_new_row() => {
             Action::NewRow
         }
-        KeyCode::Char('d') if app.content_view == ContentView::Rows && app.can_delete_row() => {
+        KeyCode::Char('d')
+            if !app.is_home()
+                && app.db.is_some()
+                && app.content_view == ContentView::Rows
+                && app.selected_table_name().is_some() =>
+        {
             Action::DeleteRow
         }
         KeyCode::Char(' ') => Action::ToggleItem,
         KeyCode::Enter => Action::Confirm,
         KeyCode::Delete | KeyCode::Backspace
-            if app.content_view == ContentView::Rows && app.can_delete_row() =>
+            if !app.is_home()
+                && app.db.is_some()
+                && app.content_view == ContentView::Rows
+                && app.selected_table_name().is_some() =>
         {
             Action::DeleteRow
         }
