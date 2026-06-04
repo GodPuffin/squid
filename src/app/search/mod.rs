@@ -93,6 +93,9 @@ impl App {
             | Action::Reload
             | Action::ExecuteSql
             | Action::NewLine
+            | Action::Copy
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::ToggleHelp => {}
         }
 

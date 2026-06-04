@@ -139,6 +139,7 @@ impl App {
                 entry("Tab", "Cycle panes"),
                 entry("F5", "Run query"),
                 entry("Enter", "New line / apply completion"),
+                entry("y", "Copy query to clipboard"),
                 entry("↑/↓", "Scroll pane"),
                 entry("PgUp/PgDn", "Scroll results"),
                 entry("c", "Clear history or results"),
@@ -258,6 +259,8 @@ impl App {
             entry("Tab / ←/→", "Switch panes"),
             entry("↑/↓", "Move selection"),
             entry("Enter", "Open row details"),
+            entry("h / l", "Select column (rows view)"),
+            entry("y", "Copy cell to clipboard"),
             entry("f", "Search current table"),
             entry("F", "Search all tables"),
             entry("v", "Toggle rows / schema"),
@@ -294,6 +297,7 @@ impl App {
             entry("↑/↓", "Move field"),
             entry("Wheel / ↑/↓", "Scroll value pane"),
             entry("e", "Edit field"),
+            entry("y", "Copy field to clipboard"),
             entry("g", "Follow foreign key"),
         ];
 

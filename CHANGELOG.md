@@ -20,3 +20,4 @@
 
 - Context-sensitive help overlay (`?`) on home, browse, detail, search, SQL, and settings.
 - Compact footer hints; modal footers no longer duplicate control text.
+- Clipboard copy (`y`) via OSC 52: browse cell (with `h`/`l` column select), detail field, or SQL query.

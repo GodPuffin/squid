@@ -1,3 +1,4 @@
+mod clipboard;
 mod core;
 pub(crate) mod detail;
 mod filter;
@@ -57,6 +58,8 @@ pub enum Action {
     MoveDown,
     MoveLeft,
     MoveRight,
+    MoveColumnLeft,
+    MoveColumnRight,
     MoveHome,
     MoveEnd,
     PageUp,
@@ -75,6 +78,7 @@ pub enum Action {
     Delete,
     Clear,
     Reload,
+    Copy,
     OpenSearchCurrent,
     OpenSearchAll,
     OpenFilters,
@@ -96,6 +100,7 @@ pub struct App {
     pub row_offset: usize,
     pub row_limit: usize,
     pub selected_row: usize,
+    pub selected_column: usize,
     pub schema_offset: usize,
     pub schema_page_lines: usize,
     pub preview: RowPreview,

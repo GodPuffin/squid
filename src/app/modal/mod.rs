@@ -74,6 +74,9 @@ impl App {
             | Action::Backspace
             | Action::ExecuteSql
             | Action::NewLine
+            | Action::Copy
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::ToggleHelp => {}
         }
 

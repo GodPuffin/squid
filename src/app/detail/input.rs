@@ -16,6 +16,7 @@ impl App {
             Action::SaveDetail => self.save_detail_changes()?,
             Action::DeleteRow => self.delete_selected_row()?,
             Action::DiscardDetail => self.discard_detail_changes(),
+            Action::Copy => self.copy_to_clipboard()?,
             Action::InputChar(ch) => self.detail_input_char(ch),
             Action::Backspace => self.detail_backspace(),
             Action::NewLine => self.detail_insert_newline(),
@@ -33,6 +34,8 @@ impl App {
             | Action::Delete
             | Action::Clear
             | Action::Reload
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::OpenFilters
