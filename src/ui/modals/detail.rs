@@ -255,12 +255,7 @@ fn detail_value_content(app: &App, theme: Theme) -> (Vec<Line<'static>>, String)
         theme.muted_style().add_modifier(Modifier::BOLD),
     ))];
 
-    if field.is_blob {
-        lines.push(Line::from(Span::styled(
-            "Blob values are visible but not editable in the details modal.",
-            theme.muted_style(),
-        )));
-    } else if detail.rowid.is_none() && !detail.is_new_row {
+    if detail.rowid.is_none() && !detail.is_new_row && !field.is_blob {
         lines.push(Line::from(Span::styled(
             "This row is read-only because rowid is unavailable.",
             theme.muted_style(),

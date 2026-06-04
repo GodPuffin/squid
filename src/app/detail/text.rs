@@ -4,7 +4,7 @@ pub(crate) fn detail_value_text(detail: &DetailState, field: &DetailField) -> St
     let mut lines = Vec::new();
 
     if field.is_blob {
-        lines.push("Blob values are displayed read-only.".to_string());
+        lines.push("Blob preview (read-only).".to_string());
         lines.push(String::new());
     } else if detail.is_new_row {
         if detail.is_editing {

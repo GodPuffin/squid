@@ -3,7 +3,7 @@ use rusqlite::params_from_iter;
 use rusqlite::types::Value;
 
 use super::schema::count_rows;
-use super::value::format_value;
+use super::value::{format_detail_value, format_value};
 use super::{
     ColumnInfo, Database, FilterClause, FilterMode, RowField, RowPreview, RowRecord, SortClause,
 };
@@ -177,7 +177,7 @@ impl Database {
                     let value = row.get_ref(idx)?;
                     Ok(RowField {
                         column_name: column.clone(),
-                        value: format_value(value),
+                        value: format_detail_value(value),
                         is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
                     })
                 })
@@ -222,7 +222,7 @@ impl Database {
                         let value = row.get_ref(idx)?;
                         Ok(RowField {
                             column_name: column.clone(),
-                            value: format_value(value),
+                            value: format_detail_value(value),
                             is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
                         })
                     })
@@ -248,7 +248,7 @@ impl Database {
                 let value = row.get_ref(idx + 1)?;
                 Ok(RowField {
                     column_name: column.clone(),
-                    value: format_value(value),
+                    value: format_detail_value(value),
                     is_blob: matches!(value, rusqlite::types::ValueRef::Blob(_)),
                 })
             })
