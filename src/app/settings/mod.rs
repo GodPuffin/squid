@@ -11,6 +11,7 @@ pub enum SettingId {
     ColorScheme,
     DoubleClickIntervalMs,
     ConfirmBeforeRemoveRecent,
+    ConfirmBeforeDeleteRow,
     AutoOpenLastDatabase,
     RestoreSessionOnOpen,
     RestoreCursorOnStartup,
@@ -25,10 +26,11 @@ pub enum SettingId {
 }
 
 impl SettingId {
-    pub const ALL: [SettingId; 14] = [
+    pub const ALL: [SettingId; 15] = [
         SettingId::ColorScheme,
         SettingId::DoubleClickIntervalMs,
         SettingId::ConfirmBeforeRemoveRecent,
+        SettingId::ConfirmBeforeDeleteRow,
         SettingId::AutoOpenLastDatabase,
         SettingId::RestoreSessionOnOpen,
         SettingId::RestoreCursorOnStartup,
@@ -47,6 +49,7 @@ impl SettingId {
             SettingId::ColorScheme => "Color scheme",
             SettingId::DoubleClickIntervalMs => "Double-click interval (ms)",
             SettingId::ConfirmBeforeRemoveRecent => "Confirm before removing recent",
+            SettingId::ConfirmBeforeDeleteRow => "Confirm before deleting row",
             SettingId::AutoOpenLastDatabase => "Open last database on startup",
             SettingId::RestoreSessionOnOpen => "Restore session when reopening a database",
             SettingId::RestoreCursorOnStartup => "Restore table and row on startup",
@@ -69,6 +72,9 @@ impl SettingId {
             }
             SettingId::ConfirmBeforeRemoveRecent => {
                 "Require a second Delete press before removing a recent database"
+            }
+            SettingId::ConfirmBeforeDeleteRow => {
+                "Require a second d press before deleting a row from browse or detail"
             }
             SettingId::AutoOpenLastDatabase => {
                 "When no database path is passed on the command line, open the most recent file"
@@ -105,6 +111,9 @@ impl SettingId {
             SettingId::ConfirmBeforeRemoveRecent => {
                 bool_label(settings.confirm_before_remove_recent)
             }
+            SettingId::ConfirmBeforeDeleteRow => {
+                bool_label(settings.confirm_before_delete_row)
+            }
             SettingId::AutoOpenLastDatabase => bool_label(settings.auto_open_last_database),
             SettingId::RestoreSessionOnOpen => bool_label(settings.restore_session_on_open),
             SettingId::RestoreCursorOnStartup => bool_label(settings.restore_cursor_on_startup),
@@ -138,6 +147,9 @@ impl SettingId {
             }
             SettingId::ConfirmBeforeRemoveRecent => {
                 settings.confirm_before_remove_recent = !settings.confirm_before_remove_recent;
+            }
+            SettingId::ConfirmBeforeDeleteRow => {
+                settings.confirm_before_delete_row = !settings.confirm_before_delete_row;
             }
             SettingId::AutoOpenLastDatabase => {
                 settings.auto_open_last_database = !settings.auto_open_last_database;

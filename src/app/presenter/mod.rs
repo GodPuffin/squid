@@ -204,6 +204,9 @@ impl App {
                 return "e edit  s insert".to_string();
             }
             if self.detail_is_row_writable() && self.can_delete_detail_row() {
+                if self.pending_row_delete.is_some() {
+                    return "e edit  d confirm  g link".to_string();
+                }
                 return "e edit  d delete  g link".to_string();
             }
             if self.detail_is_row_writable() {
@@ -229,6 +232,10 @@ impl App {
                 return format!("Searching {scope}…");
             }
             return "Type  ↑↓ select  Enter jump".to_string();
+        }
+
+        if self.can_delete_row() && self.pending_row_delete.is_some() {
+            return "Tab  ↑↓  d confirm".to_string();
         }
 
         "Tab  ↑↓ move  Enter  , settings".to_string()
@@ -272,7 +279,12 @@ impl App {
         }
         if self.can_delete_row() {
             let idx = if self.can_add_new_row() { 6 } else { 5 };
-            entries.insert(idx, entry("d", "Delete row"));
+            let delete_label = if self.pending_row_delete.is_some() {
+                "Confirm delete row"
+            } else {
+                "Delete row"
+            };
+            entries.insert(idx, entry("d", delete_label));
         }
 
         entries
@@ -310,7 +322,12 @@ impl App {
         }
 
         if self.can_delete_detail_row() && !self.detail.as_ref().is_some_and(|d| d.is_new_row) {
-            entries.push(entry("d", "Delete row"));
+            let delete_label = if self.pending_row_delete.is_some() {
+                "Confirm delete row"
+            } else {
+                "Delete row"
+            };
+            entries.push(entry("d", delete_label));
         }
 
         entries
