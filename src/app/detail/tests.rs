@@ -682,6 +682,13 @@ fn delete_row_from_browse_removes_selected_row() {
     );
 
     app.handle(Action::DeleteRow).unwrap();
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Press d again"))
+    );
+
+    app.handle(Action::DeleteRow).unwrap();
 
     assert_eq!(app.preview.total_rows, 1);
     assert!(
@@ -691,6 +698,37 @@ fn delete_row_from_browse_removes_selected_row() {
             .flatten()
             .all(|value| value != "gone")
     );
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Deleted row"))
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_skips_confirmation_when_setting_disabled() {
+    let path = temp_db_path("detail-delete-no-confirm");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('gone')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.app_settings.confirm_before_delete_row = false;
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.refresh_preview().unwrap();
+
+    app.handle(Action::DeleteRow).unwrap();
+
+    assert_eq!(app.preview.total_rows, 0);
     assert!(
         app.status_message
             .as_deref()
@@ -719,6 +757,7 @@ fn delete_row_from_detail_modal_closes_modal() {
     app.open_detail().unwrap();
     assert!(app.detail.is_some());
 
+    app.handle_detail(super::super::Action::DeleteRow).unwrap();
     app.handle_detail(super::super::Action::DeleteRow).unwrap();
 
     assert!(app.detail.is_none());

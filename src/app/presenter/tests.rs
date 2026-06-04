@@ -74,6 +74,30 @@ fn help_entries_cover_browse_actions() {
 }
 
 #[test]
+fn browse_help_shows_confirm_delete_when_pending() {
+    let mut app = app_with_presenter_data("presenter-delete-confirm-help");
+    app.focus = crate::app::PaneFocus::Content;
+    app.pending_row_delete = Some(crate::app::PendingRowDelete {
+        table_name: app.selected_table_name().unwrap().to_string(),
+        rowid: 1,
+    });
+
+    let keys: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect();
+    assert!(keys.iter().any(|key| key == "d"));
+    let descriptions: Vec<_> = app
+        .help_entries()
+        .into_iter()
+        .filter(|entry| entry.key == "d")
+        .map(|entry| entry.description)
+        .collect();
+    assert!(descriptions.iter().any(|desc| desc.contains("Confirm")));
+}
+
+#[test]
 fn home_footer_includes_settings_and_confirm_remove() {
     let mut app = App::load(None).unwrap();
     app.mode = AppMode::Home;

@@ -1,8 +1,12 @@
 use anyhow::Result;
 
-use super::super::{App, ContentView, DetailMessage, PaneFocus};
+use super::super::{App, ContentView, DetailMessage, PaneFocus, PendingRowDelete};
 
 impl App {
+    pub(in crate::app) fn clear_pending_row_delete(&mut self) {
+        self.pending_row_delete = None;
+    }
+
     pub(in crate::app) fn delete_selected_row(&mut self) -> Result<()> {
         if self.detail.as_ref().is_some_and(|detail| detail.is_new_row) {
             return Ok(());
@@ -55,11 +59,31 @@ impl App {
             rowid
         };
 
+        let target = PendingRowDelete {
+            table_name: table_name.clone(),
+            rowid,
+        };
+
+        if self.app_settings.confirm_before_delete_row {
+            let pending = self.pending_row_delete.as_ref();
+            if pending.is_some_and(|pending| pending == &target) {
+                self.clear_pending_row_delete();
+            } else {
+                self.pending_row_delete = Some(target);
+                self.status_message = Some(format!(
+                    "Press d again to delete row {rowid} from {table_name}",
+                ));
+                return Ok(());
+            }
+        } else {
+            self.clear_pending_row_delete();
+        }
+
         match self.db_ref()?.delete_row(&table_name, rowid) {
             Ok(()) => {
                 self.detail = None;
                 self.refresh_preview()?;
-                self.status_message = Some(format!("Deleted row {rowid}"));
+                self.status_message = Some(format!("Deleted row {rowid} from {table_name}"));
             }
             Err(err) => {
                 let message = format!("Could not delete row: {err}");

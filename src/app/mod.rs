@@ -27,6 +27,12 @@ pub use state::{
 };
 pub use table_config::{FilterRule, SortRule, TableConfig};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PendingRowDelete {
+    pub table_name: String,
+    pub rowid: i64,
+}
+
 const DEFAULT_ROW_LIMIT: usize = 25;
 const DEFAULT_SCHEMA_PAGE_LINES: usize = 20;
 const DEFAULT_DETAIL_VALUE_WIDTH: usize = 40;
@@ -114,6 +120,7 @@ pub struct App {
     pub(crate) app_settings: AppSettings,
     pub(crate) settings_page: Option<settings::SettingsState>,
     pub(crate) pending_recent_removal: Option<PathBuf>,
+    pub(crate) pending_row_delete: Option<PendingRowDelete>,
     configs: HashMap<String, TableConfig>,
     schema_lines_cache: RefCell<Option<(u64, Vec<String>)>>,
 }
