@@ -33,6 +33,7 @@ impl App {
             | Action::Delete
             | Action::Clear
             | Action::Reload
+            | Action::Export
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::OpenFilters

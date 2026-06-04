@@ -88,6 +88,7 @@ impl App {
             | Action::PageUp
             | Action::PageDown
             | Action::Reload
+            | Action::Export
             | Action::OpenSearchCurrent
             | Action::OpenSearchAll
             | Action::FollowLink

@@ -86,6 +86,7 @@ impl App {
             Action::OpenConfig => self.open_config_modal(),
             Action::OpenFilters => self.open_filter_modal(),
             Action::Reload => self.reload()?,
+            Action::Export => self.export_current_view()?,
             Action::OpenSearchCurrent => self.open_search(super::SearchScope::CurrentTable)?,
             Action::OpenSearchAll => self.open_search(super::SearchScope::AllTables)?,
             Action::Confirm => self.open_detail()?,
@@ -304,6 +305,7 @@ impl App {
             | Action::FollowLink
             | Action::NewRow
             | Action::DeleteRow
+            | Action::Export
             | Action::ToggleHelp => {}
         }
 

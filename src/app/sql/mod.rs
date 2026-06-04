@@ -230,6 +230,7 @@ impl App {
             | Action::OpenFilters
             | Action::NewRow
             | Action::DeleteRow
+            | Action::Export
             | Action::ToggleHelp => {}
         }
 

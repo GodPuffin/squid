@@ -1,5 +1,6 @@
 mod core;
 pub(crate) mod detail;
+mod export;
 mod filter;
 mod home;
 mod modal;
@@ -75,6 +76,7 @@ pub enum Action {
     Delete,
     Clear,
     Reload,
+    Export,
     OpenSearchCurrent,
     OpenSearchAll,
     OpenFilters,

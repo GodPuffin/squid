@@ -1,4 +1,5 @@
 mod execute;
+pub(crate) mod export;
 mod query;
 mod schema;
 mod search;
