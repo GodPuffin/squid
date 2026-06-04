@@ -12,14 +12,22 @@ use super::super::{
 impl App {
     pub(super) fn open_database(&mut self, path: &Path) -> Result<()> {
         let absolute_path = normalize_database_path(path)?;
-        let db = Database::open(&absolute_path)?;
+        let db = if self.open_readonly {
+            Database::open_readonly(&absolute_path)?
+        } else {
+            Database::open(&absolute_path)?
+        };
         let tables = db.list_tables()?;
         let mut warnings = Vec::new();
-        let stored_session = match AppStorage::load_session(&absolute_path) {
-            Ok(session) => session,
-            Err(error) => {
-                warnings.push(format!("could not restore session: {error}"));
-                None
+        let stored_session = if self.skip_session {
+            None
+        } else {
+            match AppStorage::load_session(&absolute_path) {
+                Ok(session) => session,
+                Err(error) => {
+                    warnings.push(format!("could not restore session: {error}"));
+                    None
+                }
             }
         };
 
@@ -40,7 +48,9 @@ impl App {
         self.sql.column_cache.clear();
         self.sql_invalidate_completion_cache();
         self.reset_content_position();
-        if self.app_settings.restore_session_on_open {
+        if self.skip_session {
+            self.restore_session_state(None)?;
+        } else if self.app_settings.restore_session_on_open {
             self.restore_session_state(stored_session)?;
         } else {
             self.restore_session_state(None)?;

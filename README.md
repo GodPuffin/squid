@@ -14,6 +14,14 @@ Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, 
 - **Themes** — dark, light, monokai, solarized (dark/light), and dracula.
 - **Help** — press `?` anywhere for context-specific keybindings.
 
+### CLI options
+
+| Flag | Description |
+|------|-------------|
+| `--readonly` | Open the database read-only (fails if the file cannot be opened read-only) |
+| `--scheme <name>` | Initial color scheme: `dark`, `light`, `monokai`, `solarized_dark`, `solarized_light`, `dracula` |
+| `--no-session` | Skip restoring and saving per-database session state for this run |
+
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Install

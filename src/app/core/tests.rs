@@ -6,7 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use super::super::home::AppStorage;
-use crate::app::{App, AppSettings};
+use crate::app::{App, AppSettings, ColorScheme};
+use crate::cli::Cli;
 
 static ISOLATED_LOAD_ENV: Mutex<()> = Mutex::new(());
 
@@ -33,6 +34,36 @@ fn loading_without_path_starts_on_home_screen() {
 
     assert!(app.is_home());
     assert!(app.path().is_none());
+}
+
+#[test]
+fn load_applies_cli_color_scheme() {
+    let storage = temp_db_path("scheme-load-isolated");
+    AppStorage::save_settings_at(
+        &storage,
+        &AppSettings {
+            auto_open_last_database: false,
+            color_scheme: ColorScheme::Dark,
+            ..AppSettings::default()
+        },
+    )
+    .expect("save settings");
+
+    let _guard = ISOLATED_LOAD_ENV.lock().expect("env lock");
+    unsafe { std::env::set_var("SQUID_STATE_DB", &storage) };
+    let app = App::load(Cli {
+        path: None,
+        readonly: false,
+        scheme: Some("dracula".to_string()),
+        no_session: false,
+    })
+    .expect("load app");
+    unsafe { std::env::remove_var("SQUID_STATE_DB") };
+    drop(_guard);
+
+    let _ = fs::remove_file(storage);
+
+    assert_eq!(app.app_settings.color_scheme, ColorScheme::Dracula);
 }
 
 #[test]

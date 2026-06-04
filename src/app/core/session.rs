@@ -80,7 +80,7 @@ impl App {
     }
 
     pub(in crate::app) fn persist_session_state(&self) -> Result<()> {
-        if self.app_settings.clear_session_on_quit {
+        if self.skip_session || self.app_settings.clear_session_on_quit {
             return Ok(());
         }
 
