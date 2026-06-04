@@ -212,6 +212,7 @@ impl App {
             Action::ExecuteSql => self.sql_execute()?,
             Action::Confirm => self.sql_confirm()?,
             Action::Clear => self.sql_clear(),
+            Action::Copy => self.copy_to_clipboard()?,
             Action::Reload => self.reload()?,
             Action::CloseModal => self.sql.completion = None,
             Action::Quit => {}
@@ -230,6 +231,8 @@ impl App {
             | Action::OpenFilters
             | Action::NewRow
             | Action::DeleteRow
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::ToggleHelp => {}
         }
 

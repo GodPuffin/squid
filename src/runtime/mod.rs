@@ -1,3 +1,4 @@
+pub(crate) mod clipboard;
 mod input;
 mod mouse;
 mod terminal;

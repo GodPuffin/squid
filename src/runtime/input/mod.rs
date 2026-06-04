@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::app::{Action, App, AppMode, ContentView, DetailPane, FilterPane, SqlPane};
+use crate::app::{Action, App, AppMode, ContentView, DetailPane, FilterPane, PaneFocus, SqlPane};
 
 pub fn action_for_key(app: &App, key: KeyEvent) -> Action {
     if app.show_help {
@@ -59,6 +59,7 @@ fn detail_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Char('s') => Action::SaveDetail,
         KeyCode::Char('d') if app.can_delete_detail_row() => Action::DeleteRow,
         KeyCode::Char('c') => Action::DiscardDetail,
+        KeyCode::Char('y') => Action::Copy,
         KeyCode::Enter
             if app.detail_selected_field_is_editable()
                 && (app.detail_pane() == Some(DetailPane::Value) || app.detail_is_new_row()) =>
@@ -172,6 +173,21 @@ fn browse_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Delete | KeyCode::Backspace => Action::Delete,
         KeyCode::Char('c') => Action::Clear,
         KeyCode::Char('r') => Action::Reload,
+        KeyCode::Char('y')
+            if app.focus == PaneFocus::Content && app.content_view == ContentView::Rows =>
+        {
+            Action::Copy
+        }
+        KeyCode::Char('h')
+            if app.focus == PaneFocus::Content && app.content_view == ContentView::Rows =>
+        {
+            Action::MoveColumnLeft
+        }
+        KeyCode::Char('l')
+            if app.focus == PaneFocus::Content && app.content_view == ContentView::Rows =>
+        {
+            Action::MoveColumnRight
+        }
         _ => Action::None,
     }
 }
@@ -197,6 +213,7 @@ fn sql_action(app: &App, key: KeyEvent) -> Action {
         KeyCode::Delete => Action::Delete,
         KeyCode::Backspace => Action::Backspace,
         KeyCode::Char('c') if app.sql_focus() != SqlPane::Editor => Action::Clear,
+        KeyCode::Char('y') if app.sql_focus() == SqlPane::Editor => Action::Copy,
         KeyCode::Char(ch) if !ch.is_control() => Action::InputChar(ch),
         _ => Action::None,
     }

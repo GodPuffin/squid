@@ -6,7 +6,7 @@ Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, 
 
 ## Features
 
-- **Browse** — table list, row preview, schema view, column visibility, multi-column sort, and filters.
+- **Browse** — table list, row preview, schema view, column visibility, multi-column sort, filters, and clipboard copy (`y`).
 - **Search** — current-table live search (for smaller tables) and full-database search with jump-to-row.
 - **SQL mode** — syntax highlighting, history, completions, and result grids for SELECT and write queries.
 - **Row details** — edit fields, follow foreign keys, insert new rows (`a`), and delete rows (`d`) on writable tables.
@@ -39,6 +39,8 @@ squid path\to\database.sqlite
 ```
 
 Run without a path to open the home screen (recents and settings). With **Open last database on startup** enabled in settings, the most recent file opens automatically.
+
+Copy to clipboard uses OSC 52 (works in many SSH terminals). In browse rows view, use `h` / `l` to select a column, then `y` to copy the cell. In the detail modal or SQL editor, `y` copies the current field or full query.
 
 Build from source:
 

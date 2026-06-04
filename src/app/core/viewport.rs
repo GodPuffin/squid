@@ -166,6 +166,7 @@ impl App {
 
     pub(in crate::app) fn reset_content_position(&mut self) {
         self.selected_row = 0;
+        self.selected_column = 0;
         self.row_offset = 0;
         self.schema_offset = 0;
     }

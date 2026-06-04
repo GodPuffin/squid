@@ -30,6 +30,7 @@ impl App {
             row_offset: 0,
             row_limit: super::super::DEFAULT_ROW_LIMIT,
             selected_row: 0,
+            selected_column: 0,
             schema_offset: 0,
             schema_page_lines: super::super::DEFAULT_SCHEMA_PAGE_LINES,
             preview: RowPreview::empty(),

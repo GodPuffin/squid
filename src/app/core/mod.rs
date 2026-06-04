@@ -86,6 +86,17 @@ impl App {
             Action::OpenConfig => self.open_config_modal(),
             Action::OpenFilters => self.open_filter_modal(),
             Action::Reload => self.reload()?,
+            Action::Copy => self.copy_to_clipboard()?,
+            Action::MoveColumnLeft
+                if self.focus == PaneFocus::Content && self.content_view == ContentView::Rows =>
+            {
+                self.move_preview_column_left();
+            }
+            Action::MoveColumnRight
+                if self.focus == PaneFocus::Content && self.content_view == ContentView::Rows =>
+            {
+                self.move_preview_column_right();
+            }
             Action::OpenSearchCurrent => self.open_search(super::SearchScope::CurrentTable)?,
             Action::OpenSearchAll => self.open_search(super::SearchScope::AllTables)?,
             Action::Confirm => self.open_detail()?,
@@ -100,6 +111,8 @@ impl App {
             | Action::DeleteRow
             | Action::Delete
             | Action::Clear
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::MoveHome
             | Action::MoveEnd
             | Action::PageUp
@@ -304,6 +317,9 @@ impl App {
             | Action::FollowLink
             | Action::NewRow
             | Action::DeleteRow
+            | Action::Copy
+            | Action::MoveColumnLeft
+            | Action::MoveColumnRight
             | Action::ToggleHelp => {}
         }
 
