@@ -4,6 +4,18 @@ SQLite viewer and query runner for the terminal.
 
 Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, sort, filter, view full row details, and switch into a writable SQL mode with syntax highlighting, history, completions, and result grids.
 
+## Features
+
+- **Browse** — table list, row preview, schema view, column visibility, multi-column sort, and filters.
+- **Search** — current-table live search (for smaller tables) and full-database search with jump-to-row.
+- **SQL mode** — syntax highlighting, history, completions, and result grids for SELECT and write queries.
+- **Row details** — edit fields, follow foreign keys, insert new rows (`a`), and delete rows (`d`) on writable tables.
+- **Settings** — persistent preferences (`,` from home or browse): color scheme, session restore, recents, SQL limits, and more.
+- **Themes** — dark, light, monokai, solarized (dark/light), and dracula.
+- **Help** — press `?` anywhere for context-specific keybindings.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Install
 
 Windows:
@@ -25,6 +37,8 @@ The installer downloads the latest GitHub release and adds `squid` to a user-loc
 ```powershell
 squid path\to\database.sqlite
 ```
+
+Run without a path to open the home screen (recents and settings). With **Open last database on startup** enabled in settings, the most recent file opens automatically.
 
 Build from source:
 
