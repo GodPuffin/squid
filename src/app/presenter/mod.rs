@@ -263,6 +263,7 @@ impl App {
             entry("v", "Toggle rows / schema"),
             entry("m", "Sort & columns"),
             entry("M", "Filters"),
+            entry("x", "Export view to CSV"),
             entry("r", "Reload"),
             entry("q", "Quit"),
         ];

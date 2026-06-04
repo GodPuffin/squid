@@ -6,7 +6,7 @@ Open a `.db` or `.sqlite` file, browse tables and rows, inspect schema, search, 
 
 ## Features
 
-- **Browse** — table list, row preview, schema view, column visibility, multi-column sort, and filters.
+- **Browse** — table list, row preview, schema view, column visibility, multi-column sort, filters, and CSV export (`x`).
 - **Search** — current-table live search (for smaller tables) and full-database search with jump-to-row.
 - **SQL mode** — syntax highlighting, history, completions, and result grids for SELECT and write queries.
 - **Row details** — edit fields, follow foreign keys, insert new rows (`a`), and delete rows (`d`) on writable tables.

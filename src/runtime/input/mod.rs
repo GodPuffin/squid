@@ -172,6 +172,7 @@ fn browse_action(app: &App, key: KeyCode) -> Action {
         KeyCode::Delete | KeyCode::Backspace => Action::Delete,
         KeyCode::Char('c') => Action::Clear,
         KeyCode::Char('r') => Action::Reload,
+        KeyCode::Char('x') if app.content_view == ContentView::Rows => Action::Export,
         _ => Action::None,
     }
 }

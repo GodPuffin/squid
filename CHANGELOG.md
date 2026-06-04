@@ -16,6 +16,10 @@
 - Insert new rows from browse (`a`) or the detail modal.
 - Delete rows from browse (`d`) or the detail modal, with guards for read-only databases, missing rowid, and unsaved edits.
 
+### Browse
+
+- Export the current filtered/sorted row view to CSV (`x`). Writes `{table}.csv` in the working directory (or `{table}-N.csv` if the file exists).
+
 ### Help and UX
 
 - Context-sensitive help overlay (`?`) on home, browse, detail, search, SQL, and settings.

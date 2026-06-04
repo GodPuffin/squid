@@ -91,6 +91,7 @@ impl App {
             | Action::DiscardDetail
             | Action::OpenFilters
             | Action::Reload
+            | Action::Export
             | Action::ExecuteSql
             | Action::NewLine
             | Action::ToggleHelp => {}
