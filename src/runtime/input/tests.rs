@@ -73,18 +73,25 @@ fn browse_rows_accepts_a_for_new_row_on_writable_table() {
 }
 
 #[test]
-fn browse_rows_ignores_d_without_rows() {
+fn browse_rows_maps_d_without_rows_to_delete_with_feedback() {
     let path = temp_db_path("browse-delete-empty");
     let conn = Connection::open(&path).expect("create db");
     conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
         .expect("create table");
     drop(conn);
 
-    let app = App::load(path.clone()).expect("load app");
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
     assert!(!app.can_delete_row());
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
-        Action::None
+        Action::DeleteRow
+    );
+    app.handle(Action::DeleteRow).unwrap();
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("No row"))
     );
 
     let _ = fs::remove_file(path);
@@ -126,7 +133,13 @@ fn browse_rows_ignores_d_when_tables_pane_focused() {
     assert!(!app.can_delete_row());
     assert_eq!(
         action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
-        Action::None
+        Action::DeleteRow
+    );
+    app.handle(Action::DeleteRow).unwrap();
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Tab"))
     );
 
     app.focus_content();
