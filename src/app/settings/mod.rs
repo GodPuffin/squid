@@ -111,9 +111,7 @@ impl SettingId {
             SettingId::ConfirmBeforeRemoveRecent => {
                 bool_label(settings.confirm_before_remove_recent)
             }
-            SettingId::ConfirmBeforeDeleteRow => {
-                bool_label(settings.confirm_before_delete_row)
-            }
+            SettingId::ConfirmBeforeDeleteRow => bool_label(settings.confirm_before_delete_row),
             SettingId::AutoOpenLastDatabase => bool_label(settings.auto_open_last_database),
             SettingId::RestoreSessionOnOpen => bool_label(settings.restore_session_on_open),
             SettingId::RestoreCursorOnStartup => bool_label(settings.restore_cursor_on_startup),

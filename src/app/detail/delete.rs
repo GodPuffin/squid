@@ -83,8 +83,7 @@ impl App {
             Ok(()) => {
                 self.detail = None;
                 self.refresh_preview()?;
-                self.status_message =
-                    Some(format!("Deleted row {rowid} from {table_name}"));
+                self.status_message = Some(format!("Deleted row {rowid} from {table_name}"));
             }
             Err(err) => {
                 let message = format!("Could not delete row: {err}");
