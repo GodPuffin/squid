@@ -34,6 +34,10 @@ fn setting_ids_toggle_booleans() {
 
     SettingId::ConfirmBeforeRemoveRecent.adjust(&mut settings);
     assert!(!settings.confirm_before_remove_recent);
+
+    assert!(settings.confirm_before_delete_row);
+    SettingId::ConfirmBeforeDeleteRow.adjust(&mut settings);
+    assert!(!settings.confirm_before_delete_row);
 }
 
 #[test]

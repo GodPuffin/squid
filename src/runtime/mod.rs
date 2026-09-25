@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, Event, KeyEventKind, MouseEventKind};
 use ratatui::layout::Rect;
 
 use crate::app::{Action, App};
@@ -63,6 +63,9 @@ fn run_loop(terminal: &mut terminal::TerminalHandle, path: Option<PathBuf>) -> R
                 app.handle(action)?;
             }
             Event::Mouse(event) if !app.settings_open() => {
+                if !matches!(event.kind, MouseEventKind::Moved) {
+                    app.clear_pending_row_delete();
+                }
                 let should_quit = mouse::handle_mouse_event(
                     &mut app,
                     &layout,
