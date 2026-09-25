@@ -97,6 +97,22 @@ impl App {
         }
     }
 
+    /// A one-off status message to show in the footer in place of the hint.
+    pub fn footer_status(&self) -> Option<&str> {
+        if self.is_home() || self.show_help || self.settings_open() {
+            return None;
+        }
+        self.status_message.as_deref()
+    }
+
+    fn pending_row_delete_prompt(&self) -> Option<String> {
+        if !self.pending_row_delete_is_current() {
+            return None;
+        }
+        let rowid = self.pending_row_delete.as_ref()?.rowid;
+        Some(format!("Press d again to delete row {rowid}  Esc cancel"))
+    }
+
     pub fn help_available(&self) -> bool {
         !self.settings_open()
             && self.search.is_none()
@@ -204,8 +220,8 @@ impl App {
                 return "e edit  s insert".to_string();
             }
             if self.detail_is_row_writable() && self.can_delete_detail_row() {
-                if self.pending_row_delete.is_some() {
-                    return "e edit  d confirm  g link".to_string();
+                if let Some(prompt) = self.pending_row_delete_prompt() {
+                    return prompt;
                 }
                 return "e edit  d delete  g link".to_string();
             }
@@ -234,8 +250,10 @@ impl App {
             return "Type  ↑↓ select  Enter jump".to_string();
         }
 
-        if self.can_delete_row() && self.pending_row_delete.is_some() {
-            return "Tab  ↑↓  d confirm".to_string();
+        if self.can_delete_row()
+            && let Some(prompt) = self.pending_row_delete_prompt()
+        {
+            return prompt;
         }
 
         "Tab  ↑↓ move  Enter  , settings".to_string()
@@ -279,7 +297,7 @@ impl App {
         }
         if self.can_delete_row() {
             let idx = if self.can_add_new_row() { 6 } else { 5 };
-            let delete_label = if self.pending_row_delete.is_some() {
+            let delete_label = if self.pending_row_delete_is_current() {
                 "Confirm delete row"
             } else {
                 "Delete row"
@@ -322,7 +340,7 @@ impl App {
         }
 
         if self.can_delete_detail_row() && !self.detail.as_ref().is_some_and(|d| d.is_new_row) {
-            let delete_label = if self.pending_row_delete.is_some() {
+            let delete_label = if self.pending_row_delete_is_current() {
                 "Confirm delete row"
             } else {
                 "Delete row"

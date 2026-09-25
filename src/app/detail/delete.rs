@@ -3,8 +3,22 @@ use anyhow::Result;
 use super::super::{App, ContentView, DetailMessage, PaneFocus, PendingRowDelete};
 
 impl App {
-    pub(in crate::app) fn clear_pending_row_delete(&mut self) {
+    pub(crate) fn clear_pending_row_delete(&mut self) {
         self.pending_row_delete = None;
+    }
+
+    /// Whether the armed delete targets the row that is currently selected.
+    pub(in crate::app) fn pending_row_delete_is_current(&self) -> bool {
+        let Some(pending) = &self.pending_row_delete else {
+            return false;
+        };
+        if self.selected_table_name() != Some(pending.table_name.as_str()) {
+            return false;
+        }
+        match &self.detail {
+            Some(detail) => detail.rowid == Some(pending.rowid),
+            None => pending.selected_row == self.selected_row,
+        }
     }
 
     pub(in crate::app) fn delete_selected_row(&mut self) -> Result<()> {
@@ -62,17 +76,17 @@ impl App {
         let target = PendingRowDelete {
             table_name: table_name.clone(),
             rowid,
+            selected_row: self.selected_row,
         };
 
         if self.app_settings.confirm_before_delete_row {
             let pending = self.pending_row_delete.as_ref();
-            if pending.is_some_and(|pending| pending == &target) {
+            if pending.is_some_and(|pending| {
+                pending.table_name == target.table_name && pending.rowid == target.rowid
+            }) {
                 self.clear_pending_row_delete();
             } else {
                 self.pending_row_delete = Some(target);
-                self.status_message = Some(format!(
-                    "Press d again to delete row {rowid} from {table_name}",
-                ));
                 return Ok(());
             }
         } else {

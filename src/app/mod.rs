@@ -31,6 +31,7 @@ pub use table_config::{FilterRule, SortRule, TableConfig};
 pub(crate) struct PendingRowDelete {
     pub table_name: String,
     pub rowid: i64,
+    pub selected_row: usize,
 }
 
 const DEFAULT_ROW_LIMIT: usize = 25;

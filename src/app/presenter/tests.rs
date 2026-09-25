@@ -80,6 +80,7 @@ fn browse_help_shows_confirm_delete_when_pending() {
     app.pending_row_delete = Some(crate::app::PendingRowDelete {
         table_name: app.selected_table_name().unwrap().to_string(),
         rowid: 1,
+        selected_row: app.selected_row,
     });
 
     let keys: Vec<_> = app

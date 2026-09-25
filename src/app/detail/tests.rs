@@ -682,11 +682,7 @@ fn delete_row_from_browse_removes_selected_row() {
     );
 
     app.handle(Action::DeleteRow).unwrap();
-    assert!(
-        app.status_message
-            .as_deref()
-            .is_some_and(|message| message.contains("Press d again"))
-    );
+    assert!(app.footer_hint().contains("Press d again"));
 
     app.handle(Action::DeleteRow).unwrap();
 
@@ -699,10 +695,86 @@ fn delete_row_from_browse_removes_selected_row() {
             .all(|value| value != "gone")
     );
     assert!(
-        app.status_message
-            .as_deref()
+        app.footer_status()
             .is_some_and(|message| message.contains("Deleted row"))
     );
+
+    // Status messages outside home only last until the next action.
+    app.handle(Action::MoveDown).unwrap();
+    assert!(app.footer_status().is_none());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn pending_delete_is_cancelled_by_other_actions() {
+    let path = temp_db_path("detail-delete-cancel");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('keep')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.app_settings.confirm_before_delete_row = true;
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.refresh_preview().unwrap();
+
+    app.handle(Action::DeleteRow).unwrap();
+    app.handle(Action::ToggleHelp).unwrap();
+    app.handle(Action::ToggleHelp).unwrap();
+    assert!(app.pending_row_delete.is_some(), "help should not cancel");
+
+    app.handle(Action::SwitchToSql).unwrap();
+    app.handle(Action::SwitchToBrowse).unwrap();
+    assert!(app.pending_row_delete.is_none());
+
+    app.handle(Action::DeleteRow).unwrap();
+    assert_eq!(
+        app.preview.total_rows, 1,
+        "first press after cancel re-arms"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn pending_delete_hint_tracks_selected_row() {
+    let path = temp_db_path("detail-delete-hint-selection");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('first'), ('second')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.app_settings.confirm_before_delete_row = true;
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.refresh_preview().unwrap();
+
+    app.handle(Action::DeleteRow).unwrap();
+    assert!(app.footer_hint().contains("Press d again"));
+
+    app.handle(Action::MoveDown).unwrap();
+    assert!(!app.footer_hint().contains("Press d again"));
+
+    // Pressing d on a different row arms that row instead of deleting.
+    app.handle(Action::DeleteRow).unwrap();
+    assert_eq!(app.preview.total_rows, 2);
+    assert!(app.footer_hint().contains("Press d again"));
+
+    app.handle(Action::MoveUp).unwrap();
+    assert!(!app.footer_hint().contains("Press d again"));
 
     let _ = fs::remove_file(path);
 }

@@ -66,7 +66,6 @@ impl App {
 
     pub(in crate::app) fn move_recent_selection_up(&mut self) {
         self.clear_pending_recent_removal();
-        self.clear_pending_row_delete();
         if self.selected_recent > 0 {
             self.selected_recent -= 1;
         }
@@ -74,7 +73,6 @@ impl App {
 
     pub(in crate::app) fn move_recent_selection_down(&mut self) {
         self.clear_pending_recent_removal();
-        self.clear_pending_row_delete();
         if self.selected_recent + 1 < self.recent_items.len() {
             self.selected_recent += 1;
         }
@@ -82,7 +80,6 @@ impl App {
 
     pub(super) fn open_selected_recent(&mut self) {
         self.clear_pending_recent_removal();
-        self.clear_pending_row_delete();
         let Some(item) = self.selected_recent_item().cloned() else {
             return;
         };
