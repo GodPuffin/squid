@@ -58,9 +58,11 @@ pub fn render_header(frame: &mut Frame, app: &App, layout: &LayoutInfo) {
 
 pub fn render_footer(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let theme = app.theme();
-    let footer = Paragraph::new(app.footer_hint())
-        .alignment(Alignment::Center)
-        .style(theme.muted_style());
+    let footer = match app.footer_status() {
+        Some(status) => Paragraph::new(status.to_string()).style(theme.fg_style()),
+        None => Paragraph::new(app.footer_hint()).style(theme.muted_style()),
+    }
+    .alignment(Alignment::Center);
     frame.render_widget(footer, area);
 }
 

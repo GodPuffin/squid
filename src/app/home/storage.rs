@@ -233,6 +233,9 @@ impl AppStorage {
                 "confirm_before_remove_recent" => {
                     settings.confirm_before_remove_recent = parse_settings_bool(&value)?;
                 }
+                "confirm_before_delete_row" => {
+                    settings.confirm_before_delete_row = parse_settings_bool(&value)?;
+                }
                 "default_browse_view" => {
                     settings.default_browse_view = default_browse_view_from_storage(&value)?;
                 }
@@ -290,6 +293,10 @@ impl AppStorage {
             (
                 "confirm_before_remove_recent",
                 settings_bool_to_storage(settings.confirm_before_remove_recent),
+            ),
+            (
+                "confirm_before_delete_row",
+                settings_bool_to_storage(settings.confirm_before_delete_row),
             ),
             (
                 "default_browse_view",

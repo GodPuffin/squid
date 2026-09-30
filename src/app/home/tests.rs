@@ -350,6 +350,7 @@ fn app_settings_round_trip_through_storage() {
         recent_limit: 25,
         sql_result_row_limit: 500,
         confirm_before_remove_recent: false,
+        confirm_before_delete_row: false,
         default_browse_view: DefaultBrowseView::Schema,
         sql_history_size: 25,
         live_table_search: false,
