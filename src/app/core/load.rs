@@ -48,6 +48,7 @@ impl App {
             app_settings,
             settings_page: None,
             pending_recent_removal: None,
+            pending_row_delete: None,
             configs: std::collections::HashMap::new(),
             schema_lines_cache: std::cell::RefCell::new(None),
         };

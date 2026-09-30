@@ -55,6 +55,7 @@ impl App {
 
     pub(in crate::app) fn refresh_preview(&mut self) -> Result<()> {
         self.details = None;
+        self.clear_pending_row_delete();
         self.refresh_preview_inner(true)
     }
 

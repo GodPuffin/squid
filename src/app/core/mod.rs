@@ -15,6 +15,14 @@ use super::{Action, App, AppMode, ContentView, PaneFocus};
 
 impl App {
     pub fn handle(&mut self, action: Action) -> Result<()> {
+        if !matches!(action, Action::DeleteRow | Action::ToggleHelp) {
+            self.clear_pending_row_delete();
+        }
+        // Outside home, status messages are shown in the footer until the next key.
+        if !self.is_home() {
+            self.status_message = None;
+        }
+
         if matches!(action, Action::ToggleHelp) {
             self.show_help = !self.show_help;
             if self.show_help {
