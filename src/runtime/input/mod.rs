@@ -162,10 +162,7 @@ fn browse_action(app: &App, key: KeyCode) -> Action {
             Action::NewRow
         }
         KeyCode::Char('d')
-            if !app.is_home()
-                && app.db.is_some()
-                && app.content_view == ContentView::Rows
-                && app.selected_table_name().is_some() =>
+            if !app.is_home() && app.db.is_some() && app.selected_table_name().is_some() =>
         {
             Action::DeleteRow
         }

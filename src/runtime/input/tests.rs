@@ -119,7 +119,7 @@ fn browse_rows_accepts_d_for_delete_on_writable_table_with_rows() {
 }
 
 #[test]
-fn browse_rows_ignores_d_when_tables_pane_focused() {
+fn browse_rows_maps_d_when_tables_pane_focused_to_delete_with_feedback() {
     let path = temp_db_path("browse-delete-tables-focus");
     let conn = Connection::open(&path).expect("create db");
     conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
@@ -148,6 +148,33 @@ fn browse_rows_ignores_d_when_tables_pane_focused() {
         action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
         Action::DeleteRow
     );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn browse_schema_view_maps_d_to_delete_with_visible_feedback() {
+    let path = temp_db_path("browse-delete-schema-view");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute("CREATE TABLE demo(id INTEGER PRIMARY KEY, name TEXT)", [])
+        .expect("create table");
+    conn.execute("INSERT INTO demo(name) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.focus_content();
+    app.handle(Action::ToggleView).unwrap();
+    assert_eq!(
+        action_for_key(&app, KeyEvent::from(KeyCode::Char('d'))),
+        Action::DeleteRow
+    );
+    app.handle(Action::DeleteRow).unwrap();
+    assert!(
+        app.footer_status()
+            .is_some_and(|message| message.contains("row view"))
+    );
+    assert_eq!(app.preview.total_rows, 1);
 
     let _ = fs::remove_file(path);
 }
