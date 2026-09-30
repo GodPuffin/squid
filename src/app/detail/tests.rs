@@ -367,7 +367,7 @@ fn without_rowid_tables_open_as_read_only_details() {
 }
 
 #[test]
-fn delete_row_from_browse_is_noop_when_tables_pane_focused() {
+fn delete_row_from_browse_tables_pane_shows_feedback() {
     let path = temp_db_path("detail-delete-tables-focus");
     let conn = Connection::open(&path).expect("create db");
     conn.execute(
@@ -387,6 +387,38 @@ fn delete_row_from_browse_is_noop_when_tables_pane_focused() {
     app.handle(Action::DeleteRow).unwrap();
 
     assert_eq!(app.preview.total_rows, 2);
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Tab"))
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn delete_row_from_browse_schema_view_shows_feedback() {
+    let path = temp_db_path("detail-delete-schema-view");
+    let conn = Connection::open(&path).expect("create db");
+    conn.execute(
+        "CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+        [],
+    )
+    .expect("create table");
+    conn.execute("INSERT INTO items(label) VALUES ('alpha')", [])
+        .expect("seed");
+    drop(conn);
+
+    let mut app = App::load(path.clone()).expect("load app");
+    app.select_table_by_name("items").unwrap();
+    app.focus_content();
+    app.content_view = crate::app::ContentView::Schema;
+    app.handle(Action::DeleteRow).unwrap();
+    assert!(
+        app.status_message
+            .as_deref()
+            .is_some_and(|message| message.contains("row view"))
+    );
 
     let _ = fs::remove_file(path);
 }

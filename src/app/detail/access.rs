@@ -67,7 +67,7 @@ impl App {
             && self.detail_database_is_writable()
     }
 
-    fn table_has_rowid_alias(&self) -> bool {
+    pub(in crate::app) fn table_has_rowid_alias(&self) -> bool {
         self.selected_table_name()
             .and_then(|table_name| {
                 self.db
